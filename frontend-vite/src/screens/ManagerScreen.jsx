@@ -1,38 +1,11 @@
 import { useEffect, useState } from "react";
-import Chrome from "../components/Chrome.jsx";
-import Sidebar from "../components/Sidebar.jsx";
-import Topbar from "../components/Topbar.jsx";
+import AppShell, { Header } from "../components/AppShell.jsx";
 import Icon from "../components/Icon.jsx";
 import Spark from "../components/Spark.jsx";
+import { Skeleton, SkeletonKpiRow, SkeletonCard } from "../components/Skeleton.jsx";
 import { api } from "../lib/api.js";
 
-const NAV = [
-  {
-    label: "Overview",
-    items: [
-      { id: "perf", icon: "chart", name: "Team performance" },
-      { id: "queue", icon: "inbox", name: "Live queue" },
-      { id: "sla", icon: "clock", name: "SLA monitor" },
-    ],
-  },
-  {
-    label: "Team",
-    items: [
-      { id: "agents", icon: "users", name: "Agents" },
-      { id: "shifts", icon: "clock", name: "Shifts & coverage" },
-      { id: "training", icon: "book", name: "Coaching" },
-    ],
-  },
-  {
-    label: "Insights",
-    items: [
-      { id: "trends", icon: "trend", name: "Complaint trends" },
-      { id: "macros", icon: "lightning", name: "Macro performance" },
-    ],
-  },
-];
-
-export default function ManagerScreen() {
+export default function ManagerScreen(shellProps) {
   const [data, setData] = useState(null);
   const [error, setError] = useState(null);
 
@@ -41,33 +14,45 @@ export default function ManagerScreen() {
   }, []);
 
   return (
-    <Chrome url="resolveai.app/manager">
-      <div className="shell">
-        <Sidebar
-          role="Manager"
-          items={NAV}
-          activeId="perf"
-          user={{ initials: "MK", name: "Maya Khan", role: "Support Lead" }}
-        />
-        <div className="main">
-          <Topbar
-            crumb="Team"
-            title="Team performance"
-            actions={
-              <>
-                <button className="btn"><Icon name="clock" size={12} /> Today</button>
-                <button className="btn"><Icon name="upload" size={12} /> Export</button>
-              </>
-            }
-          />
-          <div className="content">
-            {error && <div className="error-banner">{error}</div>}
-            {!data && !error && <div className="empty-state"><div className="spinner" /></div>}
-            {data && <DashboardBody data={data} />}
-          </div>
+    <AppShell {...shellProps}>
+      <Header
+        crumb="Team"
+        title="Team performance"
+        actions={
+          <>
+            <button className="btn btn-sm">
+              <Icon name="clock" size={12} className="" /> Today
+            </button>
+            <button className="btn btn-sm">
+              <Icon name="upload" size={12} className="" /> Export
+            </button>
+          </>
+        }
+      />
+      <div className="content">
+        <div className="content-narrow">
+          {error && <div className="error-banner">{error}</div>}
+          {!data && !error && (
+            <>
+              <SkeletonKpiRow cols={4} />
+              <div
+                style={{
+                  display: "grid",
+                  gridTemplateColumns: "1.6fr 1fr",
+                  gap: 14,
+                  marginBottom: 18,
+                }}
+              >
+                <SkeletonCard height={220} />
+                <SkeletonCard height={220} />
+              </div>
+              <SkeletonCard height={240} />
+            </>
+          )}
+          {data && <DashboardBody data={data} />}
         </div>
       </div>
-    </Chrome>
+    </AppShell>
   );
 }
 
@@ -103,7 +88,9 @@ function DashboardBody({ data }) {
         <Kpi
           label="Auto-resolved by AI"
           value={`${k.auto_resolved_pct}%`}
-          delta={`${k.auto_resolved_delta_pts > 0 ? "+" : ""}${k.auto_resolved_delta_pts} pts`}
+          delta={`${k.auto_resolved_delta_pts > 0 ? "+" : ""}${
+            k.auto_resolved_delta_pts
+          } pts`}
           deltaUp={k.auto_resolved_delta_pts >= 0}
           spark={k.auto_spark}
         />
@@ -151,7 +138,7 @@ function DashboardBody({ data }) {
 
         <div className="card">
           <div className="card-header">
-            <div className="card-title">SLA breaches · 7d</div>
+            <div className="card-title">SLA compliance · 7d</div>
           </div>
           <div className="card-body">
             <SlaRow label="Critical < 15m" pct={sla.Critical} />
@@ -162,8 +149,8 @@ function DashboardBody({ data }) {
             <div className="row small muted">
               <span>3 critical breaches need follow-up</span>
               <button
-                className="btn btn-ghost"
-                style={{ marginLeft: "auto", fontSize: 11, padding: "3px 8px" }}
+                className="btn btn-ghost btn-sm"
+                style={{ marginLeft: "auto" }}
               >
                 Review →
               </button>
@@ -202,7 +189,9 @@ function DashboardBody({ data }) {
                     >
                       {a.initials}
                     </div>
-                    <span style={{ fontWeight: 500 }}>{a.name}</span>
+                    <span style={{ fontWeight: 500, color: "var(--ink)" }}>
+                      {a.name}
+                    </span>
                   </div>
                 </td>
                 <td className="mono" style={{ textAlign: "right" }}>
@@ -282,12 +271,16 @@ function Kpi({ label, value, delta, deltaPct, deltaUp, deltaInverse, spark }) {
 }
 
 function SlaRow({ label, pct }) {
-  const color = pct >= 90 ? "var(--good)" : pct >= 80 ? "var(--warn)" : "var(--bad)";
+  const color =
+    pct >= 90 ? "var(--good)" : pct >= 80 ? "var(--warn)" : "var(--bad)";
   return (
     <div className="cat-row">
       <span>{label}</span>
       <div className="cat-track">
-        <div className="cat-fill" style={{ width: `${pct}%`, background: color }} />
+        <div
+          className="cat-fill"
+          style={{ width: `${pct}%`, background: color }}
+        />
       </div>
       <span className="cat-val">{pct}%</span>
     </div>

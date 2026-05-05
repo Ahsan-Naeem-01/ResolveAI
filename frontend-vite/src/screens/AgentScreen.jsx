@@ -1,50 +1,32 @@
-import { useEffect, useState, useCallback } from "react";
-import Chrome from "../components/Chrome.jsx";
-import Sidebar from "../components/Sidebar.jsx";
-import Topbar from "../components/Topbar.jsx";
+import { useCallback, useEffect, useState } from "react";
+import AppShell, { Header } from "../components/AppShell.jsx";
 import Icon from "../components/Icon.jsx";
+import { Skeleton, SkeletonCard } from "../components/Skeleton.jsx";
 import { api } from "../lib/api.js";
 import { URGENCY_CLASS, STATUS_CLASS, STATUS_LABEL } from "../lib/format.js";
 
-const NAV = [
-  {
-    label: "Queue",
-    items: [
-      { id: "inbox", icon: "inbox", name: "All tickets" },
-      { id: "mine", icon: "users", name: "Assigned to me" },
-      { id: "watch", icon: "flag", name: "Watching" },
-    ],
-  },
-  {
-    label: "Status",
-    items: [
-      { id: "review", icon: "sparkles", name: "Needs review" },
-      { id: "resolved", icon: "check", name: "Auto-resolved" },
-      { id: "escalated", icon: "shield", name: "Escalated" },
-    ],
-  },
-  {
-    label: "Library",
-    items: [
-      { id: "kb", icon: "book", name: "Knowledge base" },
-      { id: "macros", icon: "lightning", name: "Macros" },
-    ],
-  },
+const FILTERS = [
+  { id: "All", label: "All" },
+  { id: "Critical", label: "Critical" },
+  { id: "High", label: "High" },
+  { id: "needs-review", label: "Needs review" },
 ];
 
-export default function AgentScreen({ toast }) {
+export default function AgentScreen({ toast, ...shellProps }) {
   const [tickets, setTickets] = useState([]);
   const [activeCode, setActiveCode] = useState(null);
   const [filter, setFilter] = useState("All");
   const [detail, setDetail] = useState(null);
   const [replyText, setReplyText] = useState("");
   const [replyEdited, setReplyEdited] = useState(false);
-  const [loading, setLoading] = useState(false);
+  const [loadingList, setLoadingList] = useState(true);
+  const [loadingDetail, setLoadingDetail] = useState(false);
   const [error, setError] = useState(null);
-  const [busy, setBusy] = useState(null); // 'regen' | 'send' | null
+  const [busy, setBusy] = useState(null);
 
   const refreshList = useCallback(async () => {
     try {
+      setLoadingList(true);
       const params = {};
       if (filter === "Critical" || filter === "High") params.urgency = filter;
       else if (filter === "needs-review") params.status = "needs-review";
@@ -55,6 +37,8 @@ export default function AgentScreen({ toast }) {
       }
     } catch (e) {
       setError(e.message);
+    } finally {
+      setLoadingList(false);
     }
   }, [filter, activeCode]);
 
@@ -65,7 +49,7 @@ export default function AgentScreen({ toast }) {
   useEffect(() => {
     if (!activeCode) return;
     let cancelled = false;
-    setLoading(true);
+    setLoadingDetail(true);
     setError(null);
     api
       .getTicket(activeCode)
@@ -76,7 +60,7 @@ export default function AgentScreen({ toast }) {
         setReplyEdited(false);
       })
       .catch((e) => !cancelled && setError(e.message))
-      .finally(() => !cancelled && setLoading(false));
+      .finally(() => !cancelled && setLoadingDetail(false));
     return () => {
       cancelled = true;
     };
@@ -124,84 +108,74 @@ export default function AgentScreen({ toast }) {
   }
 
   return (
-    <Chrome url="resolveai.app/agent/queue">
-      <div className="shell">
-        <Sidebar
-          role="Agent workspace"
-          items={NAV}
-          activeId="inbox"
-          user={{ initials: "JM", name: "Jordan Maeda", role: "Tier 2 Agent" }}
+    <AppShell {...shellProps}>
+      <Header
+        crumb="Tickets"
+        title={`Inbox · ${tickets.length} open`}
+        actions={
+          <button className="btn btn-primary btn-sm">
+            <Icon name="plus" size={12} className="" /> New ticket
+          </button>
+        }
+      />
+      <div
+        className="content"
+        style={{
+          display: "grid",
+          gridTemplateColumns: "380px 1fr",
+          gap: 16,
+          minHeight: 0,
+          overflow: "hidden",
+        }}
+      >
+        <TicketList
+          tickets={tickets}
+          activeCode={activeCode}
+          onSelect={setActiveCode}
+          filter={filter}
+          setFilter={setFilter}
+          loading={loadingList}
         />
-        <div className="main">
-          <Topbar
-            crumb="Tickets"
-            title={`Inbox · ${tickets.length} open`}
-            actions={
-              <>
-                <button className="btn">
-                  <Icon name="filter" size={12} /> Filter
-                </button>
-                <button className="btn btn-primary">
-                  <Icon name="plus" size={12} /> New ticket
-                </button>
-              </>
-            }
-          />
-          <div
-            className="content"
-            style={{
-              display: "grid",
-              gridTemplateColumns: "380px 1fr",
-              gap: 16,
-              height: "100%",
-            }}
-          >
-            <TicketList
-              tickets={tickets}
-              activeCode={activeCode}
-              onSelect={setActiveCode}
-              filter={filter}
-              setFilter={setFilter}
-            />
-            <div
-              style={{
-                display: "flex",
-                flexDirection: "column",
-                gap: 16,
-                minHeight: 0,
-                overflow: "auto",
+        <div
+          style={{
+            display: "flex",
+            flexDirection: "column",
+            gap: 16,
+            minHeight: 0,
+            overflow: "auto",
+          }}
+        >
+          {error && <div className="error-banner">{error}</div>}
+          {loadingDetail && !detail && <SkeletonCard height={420} />}
+          {detail && (
+            <TicketDetail
+              ticket={detail}
+              replyText={replyText}
+              onReplyChange={(v) => {
+                setReplyText(v);
+                setReplyEdited(true);
               }}
-            >
-              {error && <div className="error-banner">{error}</div>}
-              {loading && !detail && (
-                <div className="empty-state">
-                  <div className="spinner" />
-                </div>
-              )}
-              {detail && (
-                <TicketDetail
-                  ticket={detail}
-                  replyText={replyText}
-                  onReplyChange={(v) => {
-                    setReplyText(v);
-                    setReplyEdited(true);
-                  }}
-                  replyEdited={replyEdited}
-                  onRegenerate={regenerate}
-                  onSend={send}
-                  onSaveDraft={saveDraft}
-                  busy={busy}
-                />
-              )}
-            </div>
-          </div>
+              replyEdited={replyEdited}
+              onRegenerate={regenerate}
+              onSend={send}
+              onSaveDraft={saveDraft}
+              busy={busy}
+            />
+          )}
         </div>
       </div>
-    </Chrome>
+    </AppShell>
   );
 }
 
-function TicketList({ tickets, activeCode, onSelect, filter, setFilter }) {
+function TicketList({
+  tickets,
+  activeCode,
+  onSelect,
+  filter,
+  setFilter,
+  loading,
+}) {
   return (
     <div
       className="card"
@@ -212,20 +186,39 @@ function TicketList({ tickets, activeCode, onSelect, filter, setFilter }) {
         minHeight: 0,
       }}
     >
-      <div className="card-header" style={{ gap: 6, padding: "10px 12px" }}>
-        {["All", "Critical", "High", "needs-review"].map((f) => (
+      <div
+        className="card-header"
+        style={{ gap: 6, padding: "10px 14px", flexShrink: 0 }}
+      >
+        {FILTERS.map((f) => (
           <button
-            key={f}
-            className={`btn ${filter === f ? "btn-primary" : "btn-ghost"}`}
-            style={{ fontSize: 11, padding: "4px 10px" }}
-            onClick={() => setFilter(f)}
+            key={f.id}
+            className={`btn btn-sm ${filter === f.id ? "btn-primary" : "btn-ghost"}`}
+            onClick={() => setFilter(f.id)}
           >
-            {f === "needs-review" ? "Needs review" : f}
+            {f.label}
           </button>
         ))}
       </div>
       <div style={{ overflow: "auto", flex: 1 }}>
-        {tickets.length === 0 && (
+        {loading && tickets.length === 0 && (
+          <div style={{ padding: 14 }}>
+            {Array.from({ length: 4 }).map((_, i) => (
+              <div
+                key={i}
+                style={{
+                  padding: "10px 0",
+                  borderBottom: "1px solid var(--line)",
+                }}
+              >
+                <Skeleton width="60%" height={11} style={{ marginBottom: 6 }} />
+                <Skeleton width="90%" height={13} style={{ marginBottom: 6 }} />
+                <Skeleton width="80%" height={10} />
+              </div>
+            ))}
+          </div>
+        )}
+        {!loading && tickets.length === 0 && (
           <div className="empty-state" style={{ height: 200 }}>
             No tickets matching this filter.
           </div>
@@ -238,9 +231,12 @@ function TicketList({ tickets, activeCode, onSelect, filter, setFilter }) {
               padding: "12px 14px",
               borderBottom: "1px solid var(--line)",
               cursor: "pointer",
-              background: t.id === activeCode ? "var(--accent-soft)" : "transparent",
+              background:
+                t.id === activeCode ? "var(--accent-soft)" : "transparent",
               borderLeft:
-                t.id === activeCode ? "3px solid var(--accent)" : "3px solid transparent",
+                t.id === activeCode
+                  ? "3px solid var(--accent)"
+                  : "3px solid transparent",
             }}
           >
             <div className="row" style={{ marginBottom: 4 }}>
@@ -250,8 +246,13 @@ function TicketList({ tickets, activeCode, onSelect, filter, setFilter }) {
               >
                 {t.initials}
               </div>
-              <span style={{ fontWeight: 500, fontSize: 12.5 }}>{t.customer}</span>
-              <span className="mono small muted" style={{ marginLeft: "auto" }}>
+              <span style={{ fontWeight: 500, fontSize: 12.5, color: "var(--ink)" }}>
+                {t.customer}
+              </span>
+              <span
+                className="mono small muted"
+                style={{ marginLeft: "auto" }}
+              >
                 {t.age}
               </span>
             </div>
@@ -310,49 +311,64 @@ function TicketDetail({
     <>
       <div className="card">
         <div className="card-header">
-          <div className="avatar" style={{ width: 32, height: 32, fontSize: 12 }}>
+          <div
+            className="avatar lg"
+            style={{ width: 32, height: 32, fontSize: 12 }}
+          >
             {ticket.initials}
           </div>
           <div>
-            <div style={{ fontWeight: 600 }}>{ticket.customer}</div>
+            <div style={{ fontWeight: 600, color: "var(--ink)" }}>
+              {ticket.customer}
+            </div>
             <div className="small muted">
-              <span className="mono">{ticket.id}</span> · opened {ticket.age} ago · via{" "}
-              {ticket.channel}
+              <span className="mono">{ticket.id}</span> · opened{" "}
+              {ticket.age} ago · via {ticket.channel}
             </div>
           </div>
           <div className="row" style={{ marginLeft: "auto", gap: 6 }}>
             <span className={URGENCY_CLASS[ticket.urgency] || "pill"}>
               <span className="pill-dot" /> {ticket.urgency}
             </span>
-            <button className="btn btn-icon btn-ghost">
-              <Icon name="moreH" size={14} />
+            <button className="btn btn-ghost btn-icon">
+              <Icon name="moreH" size={14} className="" />
             </button>
           </div>
         </div>
         <div className="card-body">
           <div
             style={{
-              fontFamily: "var(--font-display)",
-              fontSize: 17,
+              fontSize: 16,
               fontWeight: 600,
-              letterSpacing: "-0.02em",
+              letterSpacing: "-0.015em",
               marginBottom: 8,
+              color: "var(--ink)",
             }}
           >
             {ticket.subject}
           </div>
-          <div style={{ color: "var(--ink-2)", lineHeight: 1.6, fontSize: 13.5, whiteSpace: "pre-wrap" }}>
+          <div
+            style={{
+              color: "var(--ink-2)",
+              lineHeight: 1.6,
+              fontSize: 13.5,
+              whiteSpace: "pre-wrap",
+            }}
+          >
             {ticket.body}
           </div>
           {ticket.attachments && ticket.attachments.length > 0 && (
             <div className="row" style={{ marginTop: 14, gap: 10 }}>
-              <div className="upload-thumb" />
+              <div className="upload-thumb">
+                <Icon name="paperclip" size={16} className="" />
+              </div>
               <div>
                 <div className="small" style={{ fontWeight: 500 }}>
                   {ticket.attachments[0].filename}
                 </div>
                 <div className="small muted">
-                  attached by customer · {(ticket.attachments[0].size_bytes / 1024 / 1024).toFixed(1)} MB
+                  attached by customer ·{" "}
+                  {(ticket.attachments[0].size_bytes / 1024 / 1024).toFixed(1)} MB
                 </div>
               </div>
             </div>
@@ -360,14 +376,24 @@ function TicketDetail({
         </div>
       </div>
 
-      <div className="split">
+      <div
+        style={{
+          display: "grid",
+          gridTemplateColumns: "1fr 360px",
+          gap: 16,
+        }}
+      >
         <div className="card">
           <div className="card-header">
-            <Icon name="sparkles" size={14} />
+            <Icon name="sparkles" size={14} className="" />
             <div className="card-title">AI suggested reply</div>
             {ticket.confidence != null && (
-              <span className="pill pill-violet" style={{ marginLeft: "auto" }}>
-                <span className="pill-dot" /> {Math.round(ticket.confidence * 100)}% confidence
+              <span
+                className="pill pill-accent"
+                style={{ marginLeft: "auto" }}
+              >
+                <span className="pill-dot" />{" "}
+                {Math.round(ticket.confidence * 100)}% confidence
               </span>
             )}
           </div>
@@ -379,31 +405,34 @@ function TicketDetail({
               onChange={(e) => onReplyChange(e.target.value)}
               disabled={ticket.status === "resolved"}
             />
-            <div className="row" style={{ marginTop: 12, flexWrap: "wrap", gap: 6 }}>
+            <div
+              className="row"
+              style={{ marginTop: 12, flexWrap: "wrap", gap: 6 }}
+            >
               <button
-                className="btn btn-ghost"
+                className="btn btn-sm btn-ghost"
                 onClick={() => onRegenerate(null)}
                 disabled={busy === "regen"}
               >
-                <Icon name="refresh" size={12} />{" "}
+                <Icon name="refresh" size={12} className="" />
                 {busy === "regen" ? "Regenerating…" : "Regenerate"}
               </button>
               <button
-                className="btn btn-ghost"
+                className="btn btn-sm btn-ghost"
                 onClick={() => onRegenerate("warm")}
                 disabled={busy === "regen"}
               >
-                <Icon name="lightning" size={12} /> Warm tone
+                Warm
               </button>
               <button
-                className="btn btn-ghost"
+                className="btn btn-sm btn-ghost"
                 onClick={() => onRegenerate("concise")}
                 disabled={busy === "regen"}
               >
                 Concise
               </button>
               <button
-                className="btn btn-ghost"
+                className="btn btn-sm btn-ghost"
                 onClick={() => onRegenerate("formal")}
                 disabled={busy === "regen"}
               >
@@ -413,19 +442,19 @@ function TicketDetail({
                 {replyEdited ? "Edited by agent" : "AI-drafted, untouched"}
               </span>
               <button
-                className="btn"
+                className="btn btn-sm"
                 onClick={onSaveDraft}
                 disabled={!replyEdited || busy != null}
               >
-                <Icon name="check" size={12} /> Save draft
+                <Icon name="check" size={12} className="" /> Save draft
               </button>
               <button
-                className="btn btn-accent"
+                className="btn btn-primary btn-sm"
                 onClick={onSend}
                 disabled={busy != null || ticket.status === "resolved"}
               >
-                <Icon name="send" size={12} />{" "}
-                {busy === "send" ? "Sending…" : "Send reply"}
+                <Icon name="send" size={12} className="" />
+                {busy === "send" ? "Sending…" : "Send"}
               </button>
             </div>
           </div>
@@ -434,7 +463,7 @@ function TicketDetail({
         <div className="col" style={{ gap: 14 }}>
           <div className="card">
             <div className="card-header" style={{ padding: "12px 14px" }}>
-              <Icon name="layers" size={13} />
+              <Icon name="layers" size={13} className="" />
               <div className="card-title" style={{ fontSize: 13 }}>
                 Extracted
               </div>
@@ -458,16 +487,19 @@ function TicketDetail({
           {ticket.similar_tickets && ticket.similar_tickets.length > 0 && (
             <div className="card">
               <div className="card-header" style={{ padding: "12px 14px" }}>
-                <Icon name="compass" size={13} />
+                <Icon name="compass" size={13} className="" />
                 <div className="card-title" style={{ fontSize: 13 }}>
                   Similar resolved
                 </div>
               </div>
-              <div className="card-body" style={{ padding: 0 }}>
+              <div style={{ padding: 0 }}>
                 {ticket.similar_tickets.map((s) => (
                   <div
                     key={s.id}
-                    style={{ padding: "10px 14px", borderBottom: "1px solid var(--line)" }}
+                    style={{
+                      padding: "10px 14px",
+                      borderBottom: "1px solid var(--line)",
+                    }}
                   >
                     <div className="row">
                       <span className="mono small muted">{s.id}</span>
@@ -478,7 +510,10 @@ function TicketDetail({
                         {Math.round((s.similarity || 0) * 100)}%
                       </span>
                     </div>
-                    <div className="small" style={{ marginTop: 2 }}>
+                    <div
+                      className="small"
+                      style={{ marginTop: 2, color: "var(--ink-2)" }}
+                    >
                       {s.summary}
                     </div>
                   </div>

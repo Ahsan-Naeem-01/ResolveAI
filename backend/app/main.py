@@ -46,30 +46,25 @@ def health():
 
 
 # ── Static frontend ────────────────────────────────────────────────
-# Priority 1: serve the built Vite app at frontend-vite/dist if present.
-# Priority 2: fall back to the in-browser Babel prototype at frontend/.
+# Serves the built Vite app at frontend-vite/dist when present. In dev,
+# the Vite dev server (port 5173) handles the UI and proxies /api here.
 ROOT = Path(__file__).resolve().parent.parent.parent
 VITE_DIST = ROOT / "frontend-vite" / "dist"
-PROTOTYPE = ROOT / "frontend"
 
 
 def _mount_frontend():
-    if VITE_DIST.exists():
-        # Serve assets/ first so they don't get caught by SPA fallback
-        if (VITE_DIST / "assets").exists():
-            app.mount("/assets", StaticFiles(directory=VITE_DIST / "assets"), name="assets")
+    if not VITE_DIST.exists():
+        return
 
-        @app.get("/{full_path:path}")
-        def spa_catchall(full_path: str):
-            # Let API paths fall through (FastAPI matches earlier registrations first;
-            # this handler only fires for non-API paths).
-            target = VITE_DIST / full_path
-            if full_path and target.is_file():
-                return FileResponse(target)
-            return FileResponse(VITE_DIST / "index.html")
+    if (VITE_DIST / "assets").exists():
+        app.mount("/assets", StaticFiles(directory=VITE_DIST / "assets"), name="assets")
 
-    elif PROTOTYPE.exists():
-        app.mount("/", StaticFiles(directory=PROTOTYPE, html=True), name="prototype")
+    @app.get("/{full_path:path}")
+    def spa_catchall(full_path: str):
+        target = VITE_DIST / full_path
+        if full_path and target.is_file():
+            return FileResponse(target)
+        return FileResponse(VITE_DIST / "index.html")
 
 
 _mount_frontend()

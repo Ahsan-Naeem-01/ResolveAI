@@ -1,41 +1,35 @@
-import { useEffect, useState, useCallback } from "react";
-import CustomerScreen from "./screens/CustomerScreen.jsx";
-import AgentScreen from "./screens/AgentScreen.jsx";
-import ManagerScreen from "./screens/ManagerScreen.jsx";
-import AdminScreen from "./screens/AdminScreen.jsx";
+import { Suspense, lazy, useCallback, useEffect, useState } from "react";
+import ErrorBoundary from "./components/ErrorBoundary.jsx";
+import { getRole } from "./lib/roles.js";
 
-const ROLES = [
-  { id: "customer", label: "Customer" },
-  { id: "agent", label: "Agent" },
-  { id: "manager", label: "Manager" },
-  { id: "admin", label: "Admin" },
-];
+const CustomerScreen = lazy(() => import("./screens/CustomerScreen.jsx"));
+const AgentScreen = lazy(() => import("./screens/AgentScreen.jsx"));
+const ManagerScreen = lazy(() => import("./screens/ManagerScreen.jsx"));
+const AdminScreen = lazy(() => import("./screens/AdminScreen.jsx"));
 
 const STORAGE_KEY = "resolveai.preferences";
 
 export default function App() {
-  const [role, setRole] = useState("customer");
+  const [roleId, setRoleId] = useState("agent");
   const [theme, setTheme] = useState("light");
   const [toastMsg, setToastMsg] = useState(null);
 
-  // Restore persisted preferences
+  // Restore persisted preferences once
   useEffect(() => {
     try {
       const raw = localStorage.getItem(STORAGE_KEY);
-      if (raw) {
-        const saved = JSON.parse(raw);
-        if (saved.role && ROLES.some((r) => r.id === saved.role)) setRole(saved.role);
-        if (saved.theme === "light" || saved.theme === "dark") setTheme(saved.theme);
-      }
+      if (!raw) return;
+      const saved = JSON.parse(raw);
+      if (saved.roleId) setRoleId(saved.roleId);
+      if (saved.theme === "light" || saved.theme === "dark") setTheme(saved.theme);
     } catch {}
   }, []);
 
-  // Persist preferences
+  // Persist + apply theme
   useEffect(() => {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify({ role, theme }));
-  }, [role, theme]);
+    localStorage.setItem(STORAGE_KEY, JSON.stringify({ roleId, theme }));
+  }, [roleId, theme]);
 
-  // Apply theme to body
   useEffect(() => {
     document.body.dataset.theme = theme;
   }, [theme]);
@@ -45,66 +39,43 @@ export default function App() {
     setTimeout(() => setToastMsg(null), 2400);
   }, []);
 
+  const role = getRole(roleId);
+  const shellProps = {
+    role,
+    onRoleChange: setRoleId,
+    theme,
+    onThemeChange: setTheme,
+  };
+
   return (
-    <div className="app">
-      <div className="topstrip">
-        <div style={{ minWidth: 200, display: "flex", alignItems: "center", gap: 8 }}>
-          <span
-            style={{
-              fontFamily: "var(--font-display)",
-              fontWeight: 600,
-              fontSize: 14,
-              letterSpacing: "-0.01em",
-            }}
-          >
-            ResolveAI
-          </span>
-          <span className="muted small">Smart Customer Support Intelligence</span>
-        </div>
-        <div className="role-tabs-static">
-          {ROLES.map((r) => (
-            <button
-              key={r.id}
-              className={role === r.id ? "on" : ""}
-              onClick={() => setRole(r.id)}
-            >
-              <span className="dot" /> {r.label}
-            </button>
-          ))}
-        </div>
-        <div
-          style={{
-            minWidth: 200,
-            display: "flex",
-            justifyContent: "flex-end",
-            gap: 6,
-          }}
-        >
-          <div className="modeswitch-static">
-            <button
-              className={theme === "light" ? "on" : ""}
-              onClick={() => setTheme("light")}
-            >
-              Light
-            </button>
-            <button
-              className={theme === "dark" ? "on" : ""}
-              onClick={() => setTheme("dark")}
-            >
-              Dark
-            </button>
-          </div>
-        </div>
-      </div>
-
-      <div className="pageframe">
-        {role === "customer" && <CustomerScreen />}
-        {role === "agent" && <AgentScreen toast={toast} />}
-        {role === "manager" && <ManagerScreen />}
-        {role === "admin" && <AdminScreen />}
-      </div>
-
+    <ErrorBoundary>
+      <Suspense fallback={<BootSplash />}>
+        {roleId === "customer" ? (
+          <CustomerScreen {...shellProps} toast={toast} />
+        ) : roleId === "agent" ? (
+          <AgentScreen {...shellProps} toast={toast} />
+        ) : roleId === "manager" ? (
+          <ManagerScreen {...shellProps} />
+        ) : (
+          <AdminScreen {...shellProps} />
+        )}
+      </Suspense>
       {toastMsg && <div className="toast">{toastMsg}</div>}
+    </ErrorBoundary>
+  );
+}
+
+function BootSplash() {
+  return (
+    <div
+      style={{
+        display: "grid",
+        placeItems: "center",
+        height: "100vh",
+        background: "var(--bg)",
+      }}
+    >
+      <div className="spinner" />
     </div>
   );
 }

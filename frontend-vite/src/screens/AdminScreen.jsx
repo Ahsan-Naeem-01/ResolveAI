@@ -1,31 +1,10 @@
 import { Fragment, useEffect, useState } from "react";
-import Chrome from "../components/Chrome.jsx";
-import Sidebar from "../components/Sidebar.jsx";
-import Topbar from "../components/Topbar.jsx";
+import AppShell, { Header } from "../components/AppShell.jsx";
 import Icon from "../components/Icon.jsx";
+import { SkeletonKpiRow, SkeletonCard } from "../components/Skeleton.jsx";
 import { api } from "../lib/api.js";
 
-const NAV = [
-  {
-    label: "Insights",
-    items: [
-      { id: "ov", icon: "chart", name: "Overview" },
-      { id: "compl", icon: "trend", name: "Complaint trends" },
-      { id: "prod", icon: "box", name: "Product issues" },
-      { id: "rev", icon: "dollar", name: "Revenue impact" },
-    ],
-  },
-  {
-    label: "Operations",
-    items: [
-      { id: "team", icon: "users", name: "Team" },
-      { id: "int", icon: "git", name: "Integrations" },
-      { id: "set", icon: "settings", name: "Settings" },
-    ],
-  },
-];
-
-export default function AdminScreen() {
+export default function AdminScreen(shellProps) {
   const [data, setData] = useState(null);
   const [error, setError] = useState(null);
 
@@ -34,41 +13,45 @@ export default function AdminScreen() {
   }, []);
 
   return (
-    <Chrome url="resolveai.app/admin/insights">
-      <div className="shell">
-        <Sidebar
-          role="Business admin"
-          items={NAV}
-          activeId="ov"
-          user={{ initials: "RB", name: "Robin Beck", role: "Owner" }}
-        />
-        <div className="main">
-          <Topbar
-            crumb="Insights"
-            title="Business overview"
-            actions={
-              <>
-                <button className="btn">
-                  <Icon name="clock" size={12} /> Last 30 days
-                </button>
-                <button className="btn btn-primary">
-                  <Icon name="upload" size={12} /> Share report
-                </button>
-              </>
-            }
-          />
-          <div className="content">
-            {error && <div className="error-banner">{error}</div>}
-            {!data && !error && (
-              <div className="empty-state">
-                <div className="spinner" />
+    <AppShell {...shellProps}>
+      <Header
+        crumb="Insights"
+        title="Business overview"
+        actions={
+          <>
+            <button className="btn btn-sm">
+              <Icon name="clock" size={12} className="" /> Last 30 days
+            </button>
+            <button className="btn btn-primary btn-sm">
+              <Icon name="upload" size={12} className="" /> Share report
+            </button>
+          </>
+        }
+      />
+      <div className="content">
+        <div className="content-narrow">
+          {error && <div className="error-banner">{error}</div>}
+          {!data && !error && (
+            <>
+              <SkeletonKpiRow cols={4} />
+              <div
+                style={{
+                  display: "grid",
+                  gridTemplateColumns: "1fr 1.3fr",
+                  gap: 14,
+                  marginBottom: 18,
+                }}
+              >
+                <SkeletonCard height={240} />
+                <SkeletonCard height={240} />
               </div>
-            )}
-            {data && <Body data={data} />}
-          </div>
+              <SkeletonCard height={300} />
+            </>
+          )}
+          {data && <Body data={data} />}
         </div>
       </div>
-    </Chrome>
+    </AppShell>
   );
 }
 
@@ -88,7 +71,11 @@ function Body({ data }) {
           <div className="kpi-label">Total tickets</div>
           <div className="kpi-value">{k.total.toLocaleString()}</div>
           <span className={`kpi-delta ${k.total_delta_pct >= 0 ? "up" : "down"}`}>
-            <Icon name={k.total_delta_pct >= 0 ? "arrowUp" : "arrowDown"} size={10} className="" />{" "}
+            <Icon
+              name={k.total_delta_pct >= 0 ? "arrowUp" : "arrowDown"}
+              size={10}
+              className=""
+            />
             {Math.abs(k.total_delta_pct)}% vs prev
           </span>
         </div>
@@ -96,7 +83,11 @@ function Body({ data }) {
           <div className="kpi-label">Cost per ticket</div>
           <div className="kpi-value">${k.cost_per.toFixed(2)}</div>
           <span className={`kpi-delta ${k.cost_delta_pct < 0 ? "up" : "down"}`}>
-            <Icon name={k.cost_delta_pct < 0 ? "arrowDown" : "arrowUp"} size={10} className="" />{" "}
+            <Icon
+              name={k.cost_delta_pct < 0 ? "arrowDown" : "arrowUp"}
+              size={10}
+              className=""
+            />
             {Math.abs(k.cost_delta_pct)}% YoY
           </span>
         </div>
@@ -104,14 +95,21 @@ function Body({ data }) {
           <div className="kpi-label">Refund $ flagged</div>
           <div className="kpi-value">${k.refund_dollars.toLocaleString()}</div>
           <span className="kpi-delta down">
-            <Icon name="arrowUp" size={10} className="" /> {Math.abs(k.refund_delta_pct)}%
+            <Icon name="arrowUp" size={10} className="" />{" "}
+            {Math.abs(k.refund_delta_pct)}%
           </span>
         </div>
         <div className="kpi">
           <div className="kpi-label">CSAT</div>
           <div className="kpi-value">
             {k.csat}
-            <span className="muted" style={{ fontSize: 14, fontWeight: 400 }}> /5</span>
+            <span
+              className="muted"
+              style={{ fontSize: 14, fontWeight: 400 }}
+            >
+              {" "}
+              /5
+            </span>
           </div>
           <span className="kpi-delta up">
             <Icon name="arrowUp" size={10} className="" /> {k.csat_delta.toFixed(2)}
@@ -135,6 +133,16 @@ function Body({ data }) {
     </>
   );
 }
+
+const PALETTE_FALLBACK = {
+  "var(--accent)": "var(--accent)",
+  "var(--violet)": "var(--violet)",
+  "var(--good)": "var(--good)",
+  "var(--warn)": "var(--warn)",
+  "var(--bad)": "var(--bad)",
+  "var(--accent-ink)": "var(--accent-ink)",
+  "var(--ink-3)": "var(--ink-3)",
+};
 
 function Donut({ intents, total }) {
   const radius = 56;
@@ -167,7 +175,14 @@ function Donut({ intents, total }) {
         }}
       >
         <svg width="140" height="140" viewBox="0 0 140 140">
-          <circle cx="70" cy="70" r={radius} fill="none" stroke="var(--bg-sunk)" strokeWidth="14" />
+          <circle
+            cx="70"
+            cy="70"
+            r={radius}
+            fill="none"
+            stroke="var(--bg-sunk)"
+            strokeWidth="14"
+          />
           {arcs.map((a, i) => (
             <circle
               key={i}
@@ -175,7 +190,7 @@ function Donut({ intents, total }) {
               cy="70"
               r={radius}
               fill="none"
-              stroke={a.color}
+              stroke={PALETTE_FALLBACK[a.color] || a.color}
               strokeWidth="14"
               strokeDasharray={a.dasharray}
               strokeDashoffset={a.dashoffset}
@@ -187,27 +202,41 @@ function Donut({ intents, total }) {
             y="68"
             textAnchor="middle"
             style={{
-              fontFamily: "var(--font-display)",
               fontWeight: 600,
               fontSize: 22,
               fill: "var(--ink)",
+              letterSpacing: "-0.025em",
             }}
           >
             {total.toLocaleString()}
           </text>
-          <text x="70" y="84" textAnchor="middle" style={{ fontSize: 10, fill: "var(--ink-3)" }}>
+          <text
+            x="70"
+            y="84"
+            textAnchor="middle"
+            style={{ fontSize: 10, fill: "var(--ink-3)" }}
+          >
             tickets
           </text>
         </svg>
         <div>
           {intents.map((i) => (
-            <div key={i.name} className="row" style={{ padding: "4px 0", fontSize: 12 }}>
+            <div
+              key={i.name}
+              className="row"
+              style={{ padding: "4px 0", fontSize: 12 }}
+            >
               <span
                 className="pill-dot"
                 style={{ background: i.color, width: 8, height: 8 }}
               />
-              <span style={{ marginLeft: 8 }}>{i.name}</span>
-              <span className="mono small muted" style={{ marginLeft: "auto" }}>
+              <span style={{ marginLeft: 8, color: "var(--ink-2)" }}>
+                {i.name}
+              </span>
+              <span
+                className="mono small muted"
+                style={{ marginLeft: "auto" }}
+              >
                 {i.v}%
               </span>
             </div>
@@ -241,8 +270,13 @@ function ProductIssues({ issues }) {
             <tr key={p.product}>
               <td>
                 <div className="row">
-                  <div className="ph" style={{ width: 28, height: 28, fontSize: 0 }} />
-                  <span style={{ fontWeight: 500 }}>{p.product}</span>
+                  <div
+                    className="ph"
+                    style={{ width: 28, height: 28 }}
+                  />
+                  <span style={{ fontWeight: 500, color: "var(--ink)" }}>
+                    {p.product}
+                  </span>
                 </div>
               </td>
               <td>
@@ -284,7 +318,15 @@ function Heatmap({ heatmap }) {
           <div></div>
           {Array.from({ length: 24 }, (_, h) => (
             <div key={h} style={{ textAlign: "center" }}>
-              {h % 3 === 0 ? (h === 0 ? "12a" : h === 12 ? "12p" : h > 12 ? `${h - 12}p` : `${h}a`) : ""}
+              {h % 3 === 0
+                ? h === 0
+                  ? "12a"
+                  : h === 12
+                  ? "12p"
+                  : h > 12
+                  ? `${h - 12}p`
+                  : `${h}a`
+                : ""}
             </div>
           ))}
           {days.map((d, di) => (
@@ -298,7 +340,9 @@ function Heatmap({ heatmap }) {
                     background:
                       v < 0.1
                         ? "var(--bg-sunk)"
-                        : `color-mix(in oklab, var(--accent) ${Math.round(v * 90)}%, var(--bg-sunk))`,
+                        : `color-mix(in oklab, var(--accent) ${Math.round(
+                            v * 90
+                          )}%, var(--bg-sunk))`,
                   }}
                   title={`${d} ${hi}:00 — ${Math.round(v * 100)}%`}
                 />
@@ -315,7 +359,9 @@ function Heatmap({ heatmap }) {
                 width: 14,
                 height: 14,
                 borderRadius: 3,
-                background: `color-mix(in oklab, var(--accent) ${v * 90}%, var(--bg-sunk))`,
+                background: `color-mix(in oklab, var(--accent) ${
+                  v * 90
+                }%, var(--bg-sunk))`,
               }}
             />
           ))}
