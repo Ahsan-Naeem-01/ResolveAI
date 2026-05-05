@@ -217,7 +217,11 @@ def regenerate(code: str, payload: schemas.RegenerateReplyIn, db: Session = Depe
     # Persist as new draft
     db.add(Reply(ticket_id=t.id, body=nlp["auto_reply"], is_ai_draft=True))
     db.commit()
-    return {"auto_reply": nlp["auto_reply"], "tone": payload.tone}
+    return {
+        "auto_reply": nlp["auto_reply"],
+        "tone": payload.tone,
+        "reply_source": nlp.get("reply_source", "template"),
+    }
 
 
 @router.post("/{code}/send")

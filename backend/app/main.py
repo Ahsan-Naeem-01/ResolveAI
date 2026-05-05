@@ -3,6 +3,18 @@ from __future__ import annotations
 from contextlib import asynccontextmanager
 from pathlib import Path
 
+# Load environment variables from backend/.env (e.g. GROQ_API_KEY) before any
+# of our modules import settings or call os.getenv. Silently no-ops if dotenv
+# isn't installed or the file doesn't exist.
+try:
+    from dotenv import load_dotenv
+
+    _ENV_FILE = Path(__file__).resolve().parent.parent / ".env"
+    if _ENV_FILE.exists():
+        load_dotenv(_ENV_FILE)
+except ImportError:
+    pass
+
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
@@ -43,6 +55,18 @@ app.include_router(faq.router)
 @app.get("/api/health")
 def health():
     return {"ok": True, "service": "resolveai", "version": "1.0"}
+
+
+@app.get("/api/llm/status")
+def llm_status():
+    """Report whether the live LLM (Groq) is configured."""
+    from .nlp import llm
+
+    return {
+        "enabled": llm.is_enabled(),
+        "model": llm._model() if llm.is_enabled() else None,
+        "provider": "groq" if llm.is_enabled() else None,
+    }
 
 
 # ── Static frontend ────────────────────────────────────────────────

@@ -23,6 +23,15 @@ export default function AgentScreen({ toast, ...shellProps }) {
   const [loadingDetail, setLoadingDetail] = useState(false);
   const [error, setError] = useState(null);
   const [busy, setBusy] = useState(null);
+  const [llmInfo, setLlmInfo] = useState({ enabled: false, model: null });
+  const [replySource, setReplySource] = useState(null); // "llm" | "template" | null
+
+  useEffect(() => {
+    api
+      .llmStatus()
+      .then((s) => setLlmInfo(s))
+      .catch(() => {});
+  }, []);
 
   const refreshList = useCallback(async () => {
     try {
@@ -58,6 +67,7 @@ export default function AgentScreen({ toast, ...shellProps }) {
         setDetail(d);
         setReplyText(d.auto_reply || "");
         setReplyEdited(false);
+        setReplySource(null);
       })
       .catch((e) => !cancelled && setError(e.message))
       .finally(() => !cancelled && setLoadingDetail(false));
@@ -73,7 +83,10 @@ export default function AgentScreen({ toast, ...shellProps }) {
       const r = await api.regenerate(detail.id, tone);
       setReplyText(r.auto_reply);
       setReplyEdited(false);
-      toast?.(`Reply regenerated${tone ? ` (${tone})` : ""}`);
+      setReplySource(r.reply_source || null);
+      const sourceLabel =
+        r.reply_source === "llm" ? " · live LLM" : r.reply_source === "template" ? " · template" : "";
+      toast?.(`Reply regenerated${tone ? ` (${tone})` : ""}${sourceLabel}`);
     } catch (e) {
       setError(e.message);
     } finally {
@@ -160,6 +173,8 @@ export default function AgentScreen({ toast, ...shellProps }) {
               onSend={send}
               onSaveDraft={saveDraft}
               busy={busy}
+              llmInfo={llmInfo}
+              replySource={replySource}
             />
           )}
         </div>
@@ -306,7 +321,11 @@ function TicketDetail({
   onSend,
   onSaveDraft,
   busy,
+  llmInfo,
+  replySource,
 }) {
+  const showLiveBadge = replySource === "llm" || (llmInfo?.enabled && replySource == null);
+  const showTemplateBadge = replySource === "template" || (!llmInfo?.enabled && replySource == null);
   return (
     <>
       <div className="card">
@@ -387,15 +406,37 @@ function TicketDetail({
           <div className="card-header">
             <Icon name="sparkles" size={14} className="" />
             <div className="card-title">AI suggested reply</div>
-            {ticket.confidence != null && (
-              <span
-                className="pill pill-accent"
-                style={{ marginLeft: "auto" }}
-              >
-                <span className="pill-dot" />{" "}
-                {Math.round(ticket.confidence * 100)}% confidence
-              </span>
-            )}
+            <div
+              className="row"
+              style={{ marginLeft: "auto", gap: 6, flexWrap: "wrap" }}
+            >
+              {showLiveBadge && (
+                <span
+                  className="pill pill-accent"
+                  title={
+                    llmInfo?.model
+                      ? `Live LLM via Groq (${llmInfo.model})`
+                      : "Live LLM"
+                  }
+                >
+                  <span className="pill-dot" /> Live LLM
+                </span>
+              )}
+              {showTemplateBadge && (
+                <span
+                  className="pill"
+                  title="Set GROQ_API_KEY in backend/.env to enable live LLM replies"
+                >
+                  Template
+                </span>
+              )}
+              {ticket.confidence != null && (
+                <span className="pill pill-accent">
+                  <span className="pill-dot" />{" "}
+                  {Math.round(ticket.confidence * 100)}% confidence
+                </span>
+              )}
+            </div>
           </div>
           <div className="card-body">
             <textarea

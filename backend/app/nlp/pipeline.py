@@ -7,6 +7,7 @@ from . import classifier, entities as entities_mod, keywords as keywords_mod
 from . import sentiment as sentiment_mod, urgency as urgency_mod
 from . import response as response_mod, routing
 from . import semantic_search
+from . import llm
 
 
 def process(query: str, *, customer_name: str | None = None,
@@ -53,11 +54,29 @@ def process(query: str, *, customer_name: str | None = None,
     recommended = response_mod.recommend_action(intent, urgency, ents)
     steps.append(_step("Recommendation", "Action selected", t0))
 
-    # 8. Auto reply
+    # 8. Auto reply — try live LLM first, fall back to template if unavailable
     t0 = time.perf_counter()
-    auto_reply = response_mod.compose_reply(intent, urgency, sentiment_label,
-                                            ents, customer_name=customer_name, tone=tone)
-    steps.append(_step("Response generation", "Reply composed", t0))
+    llm_reply = llm.generate_reply(
+        intent=intent,
+        urgency=urgency,
+        sentiment=sentiment_label,
+        entities=ents,
+        customer_name=customer_name,
+        original_message=text,
+        tone=tone,
+    )
+    if llm_reply:
+        auto_reply = llm_reply
+        reply_source = "llm"
+        reply_desc = "Reply composed (live LLM)"
+    else:
+        auto_reply = response_mod.compose_reply(
+            intent, urgency, sentiment_label, ents,
+            customer_name=customer_name, tone=tone,
+        )
+        reply_source = "template"
+        reply_desc = "Reply composed (template fallback)"
+    steps.append(_step("Response generation", reply_desc, t0))
 
     # 9. Routing
     t0 = time.perf_counter()
@@ -77,6 +96,7 @@ def process(query: str, *, customer_name: str | None = None,
         "summary": summary,
         "recommended_action": recommended,
         "auto_reply": auto_reply,
+        "reply_source": reply_source,
         "ticket_route": route,
         "similar_tickets": similar,
         "steps": steps,
