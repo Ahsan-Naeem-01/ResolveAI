@@ -1,0 +1,151 @@
+/* App-shell styles — host page chrome around the four role surfaces. */
+
+body {
+  background: var(--bg-sunk);
+  font-family: var(--font-sans);
+}
+[data-theme="dark"] body {
+  background: #050a14;
+}
+
+.app {
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+  width: 100vw;
+}
+
+.topstrip {
+  height: 60px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 14px;
+  background: var(--bg-sunk);
+  border-bottom: 1px solid var(--line);
+  flex-shrink: 0;
+}
+[data-theme="dark"] .topstrip {
+  background: #050a14;
+  border-bottom-color: #1e293b;
+}
+.modeswitch-static {
+  background: var(--bg);
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  padding: 4px;
+  display: inline-flex;
+  gap: 2px;
+  box-shadow: 0 8px 24px -12px rgba(15, 23, 42, 0.18);
+}
+.modeswitch-static button,
+.role-tabs-static button {
+  border: 0;
+  background: transparent;
+  font: inherit;
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--ink-3);
+  padding: 7px 12px;
+  border-radius: 999px;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+.modeswitch-static button.on {
+  background: var(--ink);
+  color: var(--bg);
+}
+.role-tabs-static {
+  background: var(--bg);
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  padding: 6px;
+  display: inline-flex;
+  gap: 2px;
+  box-shadow: 0 8px 24px -12px rgba(15, 23, 42, 0.18);
+}
+.role-tabs-static button {
+  border-radius: 8px;
+}
+.role-tabs-static button.on {
+  background: var(--bg-sunk);
+  color: var(--ink);
+}
+.role-tabs-static .dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--line-2);
+}
+.role-tabs-static button.on .dot {
+  background: var(--accent);
+}
+
+.pageframe {
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.toast {
+  position: fixed;
+  bottom: 24px;
+  left: 50%;
+  transform: translateX(-50%);
+  background: var(--ink);
+  color: var(--bg);
+  padding: 10px 16px;
+  border-radius: 999px;
+  font-size: 13px;
+  font-weight: 500;
+  box-shadow: 0 12px 30px -12px rgba(15, 23, 42, 0.4);
+  z-index: 200;
+  animation: toast-in 0.2s ease-out;
+}
+@keyframes toast-in {
+  from {
+    opacity: 0;
+    transform: translate(-50%, 12px);
+  }
+  to {
+    opacity: 1;
+    transform: translate(-50%, 0);
+  }
+}
+
+.empty-state {
+  display: grid;
+  place-items: center;
+  height: 100%;
+  color: var(--ink-3);
+  font-size: 13px;
+  padding: 32px;
+  text-align: center;
+}
+
+.error-banner {
+  background: var(--bad-soft);
+  color: var(--bad);
+  border: 1px solid var(--bad);
+  border-radius: 8px;
+  padding: 10px 14px;
+  font-size: 12.5px;
+  margin-bottom: 12px;
+}
+
+.spinner {
+  width: 14px;
+  height: 14px;
+  border: 2px solid var(--line);
+  border-top-color: var(--accent);
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+  display: inline-block;
+}
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}

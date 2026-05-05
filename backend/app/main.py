@@ -1,0 +1,75 @@
+"""ResolveAI FastAPI app — exposes the NLP-backed support API and serves the frontend."""
+from __future__ import annotations
+from contextlib import asynccontextmanager
+from pathlib import Path
+
+from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import FileResponse
+from fastapi.staticfiles import StaticFiles
+
+from .database import Base, engine
+from .routers import tickets, analytics, agents, faq
+from . import seed as seed_module
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    Base.metadata.create_all(bind=engine)
+    seed_module.seed()
+    yield
+
+
+app = FastAPI(
+    title="ResolveAI API",
+    version="1.0",
+    description="NLP-powered customer support intelligence backend.",
+    lifespan=lifespan,
+)
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],  # demo — tighten in production
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+app.include_router(tickets.router)
+app.include_router(analytics.router)
+app.include_router(agents.router)
+app.include_router(faq.router)
+
+
+@app.get("/api/health")
+def health():
+    return {"ok": True, "service": "resolveai", "version": "1.0"}
+
+
+# ── Static frontend ────────────────────────────────────────────────
+# Priority 1: serve the built Vite app at frontend-vite/dist if present.
+# Priority 2: fall back to the in-browser Babel prototype at frontend/.
+ROOT = Path(__file__).resolve().parent.parent.parent
+VITE_DIST = ROOT / "frontend-vite" / "dist"
+PROTOTYPE = ROOT / "frontend"
+
+
+def _mount_frontend():
+    if VITE_DIST.exists():
+        # Serve assets/ first so they don't get caught by SPA fallback
+        if (VITE_DIST / "assets").exists():
+            app.mount("/assets", StaticFiles(directory=VITE_DIST / "assets"), name="assets")
+
+        @app.get("/{full_path:path}")
+        def spa_catchall(full_path: str):
+            # Let API paths fall through (FastAPI matches earlier registrations first;
+            # this handler only fires for non-API paths).
+            target = VITE_DIST / full_path
+            if full_path and target.is_file():
+                return FileResponse(target)
+            return FileResponse(VITE_DIST / "index.html")
+
+    elif PROTOTYPE.exists():
+        app.mount("/", StaticFiles(directory=PROTOTYPE, html=True), name="prototype")
+
+
+_mount_frontend()
