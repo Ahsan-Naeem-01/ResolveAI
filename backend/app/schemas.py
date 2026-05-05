@@ -105,3 +105,53 @@ class FAQOut(BaseModel):
     intent: str
     question: str
     answer: str
+
+
+# ── Knowledge base ────────────────────────────────────────────────
+
+
+class KBArticleSummary(BaseModel):
+    id: int
+    slug: str
+    title: str
+    summary: str = ""
+    category: str = "General"
+    intent: Optional[str] = None
+    tags: list[str] = []
+    status: str = "published"
+    views: int = 0
+    helpful: int = 0
+    not_helpful: int = 0
+    inserted_in_replies: int = 0
+    updated_at: Optional[datetime] = None
+
+
+class KBArticleOut(KBArticleSummary):
+    body: str = ""
+    author: Optional[str] = None
+    created_at: Optional[datetime] = None
+
+
+class KBArticleCreateIn(BaseModel):
+    title: str = Field(..., min_length=1, max_length=200)
+    body: str = ""
+    summary: str = ""
+    category: str = "General"
+    intent: Optional[str] = None
+    tags: list[str] = []
+    status: str = "draft"  # draft | published | archived
+    slug: Optional[str] = None  # auto-derived from title if omitted
+
+
+class KBArticleUpdateIn(BaseModel):
+    title: Optional[str] = Field(default=None, min_length=1, max_length=200)
+    body: Optional[str] = None
+    summary: Optional[str] = None
+    category: Optional[str] = None
+    intent: Optional[str] = None
+    tags: Optional[list[str]] = None
+    status: Optional[str] = None
+
+
+class KBFeedbackIn(BaseModel):
+    helpful: bool

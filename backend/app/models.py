@@ -115,6 +115,57 @@ class FAQ(Base):
     answer = Column(Text, nullable=False)
 
 
+class KBArticle(Base):
+    """A knowledge-base article. Markdown body, lifecycle status, and usage metrics."""
+    __tablename__ = "kb_articles"
+    id = Column(Integer, primary_key=True)
+    slug = Column(String, unique=True, nullable=False, index=True)
+    title = Column(String, nullable=False)
+    summary = Column(Text, default="")
+    body = Column(Text, nullable=False, default="")  # markdown
+    category = Column(String, index=True, default="General")
+    intent = Column(String, index=True, nullable=True)  # maps to NLP intent
+    tags = Column(JSON, default=list)
+    status = Column(String, default="published", index=True)  # draft | published | archived
+
+    views = Column(Integer, default=0)
+    helpful = Column(Integer, default=0)
+    not_helpful = Column(Integer, default=0)
+    inserted_in_replies = Column(Integer, default=0)
+
+    author_id = Column(Integer, ForeignKey("users.id"), nullable=True)
+    created_at = Column(DateTime, default=_now)
+    updated_at = Column(DateTime, default=_now, onupdate=_now)
+
+    author = relationship("User")
+
+    def to_summary_dict(self):
+        return {
+            "id": self.id,
+            "slug": self.slug,
+            "title": self.title,
+            "summary": self.summary or "",
+            "category": self.category or "General",
+            "intent": self.intent,
+            "tags": self.tags or [],
+            "status": self.status,
+            "views": int(self.views or 0),
+            "helpful": int(self.helpful or 0),
+            "not_helpful": int(self.not_helpful or 0),
+            "inserted_in_replies": int(self.inserted_in_replies or 0),
+            "updated_at": self.updated_at,
+        }
+
+    def to_detail_dict(self):
+        d = self.to_summary_dict()
+        d.update({
+            "body": self.body or "",
+            "author": self.author.name if self.author else None,
+            "created_at": self.created_at,
+        })
+        return d
+
+
 class TrainingExample(Base):
     """Labeled examples used to train the intent classifier and seed semantic search."""
     __tablename__ = "training_examples"

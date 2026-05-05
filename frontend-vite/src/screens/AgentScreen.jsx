@@ -4,6 +4,7 @@ import Icon from "../components/Icon.jsx";
 import { Skeleton, SkeletonCard } from "../components/Skeleton.jsx";
 import { api } from "../lib/api.js";
 import { URGENCY_CLASS, STATUS_CLASS, STATUS_LABEL } from "../lib/format.js";
+import KnowledgeBase from "./KnowledgeBase.jsx";
 
 const FILTERS = [
   { id: "All", label: "All" },
@@ -25,6 +26,7 @@ export default function AgentScreen({ toast, ...shellProps }) {
   const [busy, setBusy] = useState(null);
   const [llmInfo, setLlmInfo] = useState({ enabled: false, model: null });
   const [replySource, setReplySource] = useState(null); // "llm" | "template" | null
+  const [activeNavId, setActiveNavId] = useState("inbox");
 
   useEffect(() => {
     api
@@ -32,6 +34,13 @@ export default function AgentScreen({ toast, ...shellProps }) {
       .then((s) => setLlmInfo(s))
       .catch(() => {});
   }, []);
+
+  function insertIntoReply(text) {
+    const sep = replyText && !replyText.endsWith("\n") ? "\n\n" : "";
+    setReplyText((prev) => `${prev}${sep}${text}`);
+    setReplyEdited(true);
+    toast?.("Inserted into reply");
+  }
 
   const refreshList = useCallback(async () => {
     try {
@@ -120,66 +129,117 @@ export default function AgentScreen({ toast, ...shellProps }) {
     }
   }
 
+  // Map sidebar nav id → which view to render. Inbox-style filters all share
+  // the inbox view; the KB id renders the knowledge-base screen.
+  const isKBView = activeNavId === "kb";
+  const isMacrosView = activeNavId === "macros";
+
   return (
-    <AppShell {...shellProps}>
-      <Header
-        crumb="Tickets"
-        title={`Inbox · ${tickets.length} open`}
-        actions={
-          <button className="btn btn-primary btn-sm">
-            <Icon name="plus" size={12} className="" /> New ticket
-          </button>
-        }
-      />
-      <div
-        className="content"
-        style={{
-          display: "grid",
-          gridTemplateColumns: "380px 1fr",
-          gap: 16,
-          minHeight: 0,
-          overflow: "hidden",
-        }}
-      >
-        <TicketList
-          tickets={tickets}
-          activeCode={activeCode}
-          onSelect={setActiveCode}
-          filter={filter}
-          setFilter={setFilter}
-          loading={loadingList}
+    <AppShell
+      {...shellProps}
+      activeNavId={activeNavId}
+      onNavChange={setActiveNavId}
+    >
+      {isKBView ? (
+        <KnowledgeBase
+          toast={toast}
+          onInsertIntoReply={(text) => {
+            insertIntoReply(text);
+            setActiveNavId("inbox");
+          }}
+          ticketOpen={!!detail}
         />
+      ) : isMacrosView ? (
+        <ComingSoon
+          title="Macros"
+          subtitle="Reusable reply templates and one-click responses. Coming soon."
+        />
+      ) : (
+        <>
+          <Header
+            crumb="Tickets"
+            title={`Inbox · ${tickets.length} open`}
+            actions={
+              <button className="btn btn-primary btn-sm">
+                <Icon name="plus" size={12} className="" /> New ticket
+              </button>
+            }
+          />
+          <div
+            className="content"
+            style={{
+              display: "grid",
+              gridTemplateColumns: "380px 1fr",
+              gap: 16,
+              minHeight: 0,
+              overflow: "hidden",
+            }}
+          >
+            <TicketList
+              tickets={tickets}
+              activeCode={activeCode}
+              onSelect={setActiveCode}
+              filter={filter}
+              setFilter={setFilter}
+              loading={loadingList}
+            />
+            <div
+              style={{
+                display: "flex",
+                flexDirection: "column",
+                gap: 16,
+                minHeight: 0,
+                overflow: "auto",
+              }}
+            >
+              {error && <div className="error-banner">{error}</div>}
+              {loadingDetail && !detail && <SkeletonCard height={420} />}
+              {detail && (
+                <TicketDetail
+                  ticket={detail}
+                  replyText={replyText}
+                  onReplyChange={(v) => {
+                    setReplyText(v);
+                    setReplyEdited(true);
+                  }}
+                  replyEdited={replyEdited}
+                  onRegenerate={regenerate}
+                  onSend={send}
+                  onSaveDraft={saveDraft}
+                  busy={busy}
+                  llmInfo={llmInfo}
+                  replySource={replySource}
+                  onInsertKB={insertIntoReply}
+                />
+              )}
+            </div>
+          </div>
+        </>
+      )}
+    </AppShell>
+  );
+}
+
+function ComingSoon({ title, subtitle }) {
+  return (
+    <>
+      <Header crumb="Tickets" title={title} hasSearch={false} />
+      <div className="content">
         <div
+          className="card"
           style={{
-            display: "flex",
-            flexDirection: "column",
-            gap: 16,
-            minHeight: 0,
-            overflow: "auto",
+            padding: 32,
+            textAlign: "center",
+            color: "var(--ink-3)",
           }}
         >
-          {error && <div className="error-banner">{error}</div>}
-          {loadingDetail && !detail && <SkeletonCard height={420} />}
-          {detail && (
-            <TicketDetail
-              ticket={detail}
-              replyText={replyText}
-              onReplyChange={(v) => {
-                setReplyText(v);
-                setReplyEdited(true);
-              }}
-              replyEdited={replyEdited}
-              onRegenerate={regenerate}
-              onSend={send}
-              onSaveDraft={saveDraft}
-              busy={busy}
-              llmInfo={llmInfo}
-              replySource={replySource}
-            />
-          )}
+          <div style={{ fontSize: 14, color: "var(--ink-2)", marginBottom: 4 }}>
+            {title}
+          </div>
+          <div className="small">{subtitle}</div>
         </div>
       </div>
-    </AppShell>
+    </>
   );
 }
 
@@ -323,7 +383,38 @@ function TicketDetail({
   busy,
   llmInfo,
   replySource,
+  onInsertKB,
 }) {
+  const [kbSuggestions, setKbSuggestions] = useState([]);
+  const [kbLoading, setKbLoading] = useState(false);
+
+  useEffect(() => {
+    if (!ticket?.id) return;
+    let cancelled = false;
+    setKbLoading(true);
+    api
+      .kbSuggestForTicket(ticket.id, 3)
+      .then((rows) => {
+        if (!cancelled) setKbSuggestions(rows || []);
+      })
+      .catch(() => !cancelled && setKbSuggestions([]))
+      .finally(() => !cancelled && setKbLoading(false));
+    return () => {
+      cancelled = true;
+    };
+  }, [ticket?.id]);
+
+  async function insertKB(slug) {
+    try {
+      const article = await api.kbGet(slug);
+      await api.kbMarkInserted(slug);
+      onInsertKB?.(article.body || "");
+    } catch (e) {
+      // silent — toast handled at parent on error in actual usage
+      console.error(e);
+    }
+  }
+
   const showLiveBadge = replySource === "llm" || (llmInfo?.enabled && replySource == null);
   const showTemplateBadge = replySource === "template" || (!llmInfo?.enabled && replySource == null);
   return (
@@ -524,6 +615,83 @@ function TicketDetail({
               </div>
             </div>
           </div>
+
+          {(kbLoading || kbSuggestions.length > 0) && (
+            <div className="card">
+              <div className="card-header" style={{ padding: "12px 14px" }}>
+                <Icon name="book" size={13} className="" />
+                <div className="card-title" style={{ fontSize: 13 }}>
+                  Suggested articles
+                </div>
+                {kbLoading && (
+                  <span
+                    className="muted small"
+                    style={{ marginLeft: "auto" }}
+                  >
+                    …
+                  </span>
+                )}
+              </div>
+              <div style={{ padding: 0 }}>
+                {kbSuggestions.map((a) => (
+                  <div
+                    key={a.slug}
+                    style={{
+                      padding: "10px 14px",
+                      borderBottom: "1px solid var(--line)",
+                    }}
+                  >
+                    <div
+                      style={{
+                        fontSize: 12.5,
+                        fontWeight: 500,
+                        color: "var(--ink)",
+                        marginBottom: 2,
+                      }}
+                    >
+                      {a.title}
+                    </div>
+                    {a.summary && (
+                      <div
+                        className="small"
+                        style={{
+                          color: "var(--ink-2)",
+                          marginBottom: 6,
+                          display: "-webkit-box",
+                          WebkitLineClamp: 2,
+                          WebkitBoxOrient: "vertical",
+                          overflow: "hidden",
+                        }}
+                      >
+                        {a.summary}
+                      </div>
+                    )}
+                    <div className="row" style={{ gap: 6 }}>
+                      <span className="pill" style={{ fontSize: 10 }}>
+                        {a.category}
+                      </span>
+                      <button
+                        type="button"
+                        className="btn btn-sm btn-ghost"
+                        style={{ marginLeft: "auto", fontSize: 11 }}
+                        onClick={() => insertKB(a.slug)}
+                      >
+                        <Icon name="lightning" size={11} className="" /> Insert
+                      </button>
+                    </div>
+                  </div>
+                ))}
+                {!kbLoading && kbSuggestions.length === 0 && (
+                  <div
+                    className="small muted"
+                    style={{ padding: "12px 14px" }}
+                  >
+                    No matching articles yet.
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
 
           {ticket.similar_tickets && ticket.similar_tickets.length > 0 && (
             <div className="card">

@@ -62,4 +62,32 @@ export const api = {
   listAgents: () => request("/api/agents"),
   faqs: (intent) =>
     request(`/api/faq${intent ? `?intent=${encodeURIComponent(intent)}` : ""}`),
+
+  // ── Knowledge base ──────────────────────────────────────────
+  kbList: (params = {}) => {
+    const qs = new URLSearchParams(
+      Object.entries(params).filter(([, v]) => v != null && v !== "")
+    ).toString();
+    return request(`/api/kb${qs ? `?${qs}` : ""}`);
+  },
+  kbCategories: () => request("/api/kb/categories"),
+  kbGet: (slug) => request(`/api/kb/${encodeURIComponent(slug)}`),
+  kbCreate: (payload) =>
+    request("/api/kb", { method: "POST", body: JSON.stringify(payload) }),
+  kbUpdate: (slug, payload) =>
+    request(`/api/kb/${encodeURIComponent(slug)}`, {
+      method: "PATCH",
+      body: JSON.stringify(payload),
+    }),
+  kbDelete: (slug) =>
+    request(`/api/kb/${encodeURIComponent(slug)}`, { method: "DELETE" }),
+  kbFeedback: (slug, helpful) =>
+    request(`/api/kb/${encodeURIComponent(slug)}/feedback`, {
+      method: "POST",
+      body: JSON.stringify({ helpful }),
+    }),
+  kbMarkInserted: (slug) =>
+    request(`/api/kb/${encodeURIComponent(slug)}/insert`, { method: "POST" }),
+  kbSuggestForTicket: (ticketCode, k = 3) =>
+    request(`/api/kb/suggest?ticket=${encodeURIComponent(ticketCode)}&k=${k}`),
 };

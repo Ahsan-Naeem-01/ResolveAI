@@ -21,7 +21,7 @@ from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 
 from .database import Base, engine
-from .routers import tickets, analytics, agents, faq
+from .routers import tickets, analytics, agents, faq, kb
 from . import seed as seed_module
 
 
@@ -50,6 +50,7 @@ app.include_router(tickets.router)
 app.include_router(analytics.router)
 app.include_router(agents.router)
 app.include_router(faq.router)
+app.include_router(kb.router)
 
 
 @app.get("/api/health")

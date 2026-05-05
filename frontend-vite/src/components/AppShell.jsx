@@ -11,8 +11,15 @@ export default function AppShell({
   onRoleChange,
   theme,
   onThemeChange,
+  activeNavId,
+  onNavChange,
   children,
 }) {
+  // The active nav id can be controlled by the screen (preferred) or fall back
+  // to the role's default. This keeps existing screens (Manager / Admin) that
+  // don't yet route between sub-views working as before.
+  const currentNav = activeNavId ?? role.activeNavId;
+
   return (
     <div className="app">
       <aside className="side">
@@ -28,20 +35,26 @@ export default function AppShell({
           {role.nav.map((sect, i) => (
             <Fragment key={i}>
               {sect.label && <div className="side-section">{sect.label}</div>}
-              {sect.items.map((it) => (
-                <div
-                  key={it.id}
-                  className={`side-item ${
-                    role.activeNavId === it.id ? "active" : ""
-                  }`}
-                >
-                  <Icon name={it.icon} size={16} className="side-icon" />
-                  <span>{it.name}</span>
-                  {it.badge != null && (
-                    <span className="side-badge">{it.badge}</span>
-                  )}
-                </div>
-              ))}
+              {sect.items.map((it) => {
+                const isActive = currentNav === it.id;
+                const handleClick = () => {
+                  if (onNavChange) onNavChange(it.id);
+                };
+                return (
+                  <button
+                    type="button"
+                    key={it.id}
+                    onClick={handleClick}
+                    className={`side-item ${isActive ? "active" : ""}`}
+                  >
+                    <Icon name={it.icon} size={16} className="side-icon" />
+                    <span>{it.name}</span>
+                    {it.badge != null && (
+                      <span className="side-badge">{it.badge}</span>
+                    )}
+                  </button>
+                );
+              })}
             </Fragment>
           ))}
         </nav>
