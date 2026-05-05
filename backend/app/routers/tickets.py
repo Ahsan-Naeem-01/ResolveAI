@@ -6,6 +6,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
 
 from .. import schemas
+from ..auth import get_current_user, require_customer, require_staff
 from ..database import get_db
 from ..models import Ticket, Reply, User, Attachment
 from ..nlp import pipeline
@@ -19,23 +20,6 @@ def _next_code(db: Session) -> str:
     base = 29481
     n = base + (last.id if last else 0) + 1
     return f"TKT-{n}"
-
-
-def _ensure_customer(db: Session, *, name: Optional[str], email: Optional[str]) -> User:
-    """Find-or-create the customer user from a (name, email) pair."""
-    if email:
-        user = db.query(User).filter(User.email == email).first()
-        if user:
-            return user
-    if not name:
-        name = "Anonymous Customer"
-    if not email:
-        email = f"guest+{int(datetime.now().timestamp())}@example.com"
-    initials = "".join(part[0] for part in name.split()[:2]).upper() or "AC"
-    user = User(email=email, name=name, role="customer", initials=initials, title="")
-    db.add(user)
-    db.flush()
-    return user
 
 
 def _refresh_index(db: Session) -> None:
@@ -56,13 +40,20 @@ def _refresh_index(db: Session) -> None:
 
 
 @router.post("/process", response_model=schemas.TicketCreatedOut)
-def process_query(payload: schemas.ProcessQueryIn, db: Session = Depends(get_db)):
-    """Run the NLP pipeline on a customer query and persist a new ticket."""
+def process_query(
+    payload: schemas.ProcessQueryIn,
+    db: Session = Depends(get_db),
+    customer: User = Depends(require_customer),
+):
+    """Run the NLP pipeline on a customer query and persist a new ticket.
+
+    Only authenticated customers may submit tickets — staff accounts (agent /
+    manager / admin) get a 403.
+    """
     semantic_search.get_index()  # touch
     if semantic_search.get_index().vectorizer is None:
         _refresh_index(db)
 
-    customer = _ensure_customer(db, name=payload.customer_name, email=payload.customer_email)
     nlp = pipeline.process(payload.query, customer_name=customer.name)
 
     code = _next_code(db)
@@ -127,6 +118,7 @@ def list_tickets(
     q: Optional[str] = None,
     limit: int = Query(50, le=200),
     db: Session = Depends(get_db),
+    _: User = Depends(require_staff),
 ):
     query = db.query(Ticket).order_by(Ticket.created_at.desc())
     if status and status != "All":
@@ -143,7 +135,20 @@ def list_tickets(
 
 
 @router.get("/{code}", response_model=schemas.TicketDetailOut)
-def get_ticket(code: str, db: Session = Depends(get_db)):
+def get_ticket(
+    code: str,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    # Customers can only see their own tickets; staff see all.
+    if user.role == "customer":
+        owned = (
+            db.query(Ticket)
+            .filter(Ticket.code == code, Ticket.customer_id == user.id)
+            .first()
+        )
+        if not owned:
+            raise HTTPException(404, "Ticket not found")
     t = db.query(Ticket).filter(Ticket.code == code).first()
     if not t:
         raise HTTPException(404, "Ticket not found")
@@ -182,7 +187,12 @@ def get_ticket(code: str, db: Session = Depends(get_db)):
 
 
 @router.patch("/{code}/reply")
-def update_reply(code: str, payload: schemas.ReplyUpdateIn, db: Session = Depends(get_db)):
+def update_reply(
+    code: str,
+    payload: schemas.ReplyUpdateIn,
+    db: Session = Depends(get_db),
+    _: User = Depends(require_staff),
+):
     t = db.query(Ticket).filter(Ticket.code == code).first()
     if not t:
         raise HTTPException(404, "Ticket not found")
@@ -205,7 +215,12 @@ def update_reply(code: str, payload: schemas.ReplyUpdateIn, db: Session = Depend
 
 
 @router.post("/{code}/regenerate")
-def regenerate(code: str, payload: schemas.RegenerateReplyIn, db: Session = Depends(get_db)):
+def regenerate(
+    code: str,
+    payload: schemas.RegenerateReplyIn,
+    db: Session = Depends(get_db),
+    _: User = Depends(require_staff),
+):
     t = db.query(Ticket).filter(Ticket.code == code).first()
     if not t:
         raise HTTPException(404, "Ticket not found")
@@ -225,7 +240,12 @@ def regenerate(code: str, payload: schemas.RegenerateReplyIn, db: Session = Depe
 
 
 @router.post("/{code}/send")
-def send_reply(code: str, payload: schemas.SendReplyIn, db: Session = Depends(get_db)):
+def send_reply(
+    code: str,
+    payload: schemas.SendReplyIn,
+    db: Session = Depends(get_db),
+    _: User = Depends(require_staff),
+):
     t = db.query(Ticket).filter(Ticket.code == code).first()
     if not t:
         raise HTTPException(404, "Ticket not found")
@@ -245,7 +265,12 @@ def send_reply(code: str, payload: schemas.SendReplyIn, db: Session = Depends(ge
 
 
 @router.post("/{code}/status")
-def update_status(code: str, payload: schemas.TicketStatusUpdateIn, db: Session = Depends(get_db)):
+def update_status(
+    code: str,
+    payload: schemas.TicketStatusUpdateIn,
+    db: Session = Depends(get_db),
+    _: User = Depends(require_staff),
+):
     t = db.query(Ticket).filter(Ticket.code == code).first()
     if not t:
         raise HTTPException(404, "Ticket not found")

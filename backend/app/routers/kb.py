@@ -8,11 +8,16 @@ from sqlalchemy import or_
 from sqlalchemy.orm import Session
 
 from .. import schemas
+from ..auth import require_staff
 from ..database import get_db
 from ..models import KBArticle, Ticket
 from ..nlp.semantic_search import SemanticIndex
 
-router = APIRouter(prefix="/api/kb", tags=["knowledge-base"])
+router = APIRouter(
+    prefix="/api/kb",
+    tags=["knowledge-base"],
+    dependencies=[Depends(require_staff)],
+)
 
 
 # ── Slug helpers ────────────────────────────────────────────────────

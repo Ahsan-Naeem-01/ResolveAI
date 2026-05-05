@@ -6,6 +6,7 @@ from fastapi import APIRouter, Depends
 from sqlalchemy import func
 from sqlalchemy.orm import Session
 
+from ..auth import require_admin, require_manager
 from ..database import get_db
 from ..models import Ticket, User, Reply
 
@@ -18,7 +19,7 @@ def _aware(dt):
     return dt if dt.tzinfo else dt.replace(tzinfo=timezone.utc)
 
 
-@router.get("/manager")
+@router.get("/manager", dependencies=[Depends(require_manager)])
 def manager_dashboard(db: Session = Depends(get_db)):
     now = datetime.now(timezone.utc)
     open_statuses = ("ai-suggested", "needs-review", "escalated")
@@ -126,7 +127,7 @@ def manager_dashboard(db: Session = Depends(get_db)):
     }
 
 
-@router.get("/admin")
+@router.get("/admin", dependencies=[Depends(require_admin)])
 def admin_dashboard(db: Session = Depends(get_db)):
     now = datetime.now(timezone.utc)
     month_ago = now - timedelta(days=30)

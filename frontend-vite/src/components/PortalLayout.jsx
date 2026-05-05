@@ -1,15 +1,14 @@
 import { useEffect, useRef, useState } from "react";
 import Icon from "./Icon.jsx";
-import { ROLES, CUSTOMER_ROLE } from "../lib/roles.js";
 
 /* Public-facing customer help-portal layout.
    Distinct from the staff AppShell — this is what an end-customer would see. */
 
 export default function PortalLayout({
-  role,
-  onRoleChange,
   theme,
   onThemeChange,
+  onSignOut,
+  currentUser,
   children,
 }) {
   return (
@@ -33,10 +32,10 @@ export default function PortalLayout({
           <button className="btn btn-ghost btn-sm">Track an order</button>
           <button className="btn btn-ghost btn-sm">FAQs</button>
           <PortalUserMenu
-            role={role}
+            currentUser={currentUser}
             theme={theme}
-            onRoleChange={onRoleChange}
             onThemeChange={onThemeChange}
+            onSignOut={onSignOut}
           />
         </div>
       </header>
@@ -48,7 +47,7 @@ export default function PortalLayout({
   );
 }
 
-function PortalUserMenu({ role, theme, onThemeChange, onRoleChange }) {
+function PortalUserMenu({ currentUser, theme, onThemeChange, onSignOut }) {
   const [open, setOpen] = useState(false);
   const ref = useRef(null);
 
@@ -64,10 +63,14 @@ function PortalUserMenu({ role, theme, onThemeChange, onRoleChange }) {
   return (
     <div ref={ref} style={{ position: "relative" }}>
       <button
-        className="btn btn-ghost btn-sm"
+        className="btn btn-sm"
         onClick={() => setOpen((v) => !v)}
+        style={{ display: "flex", alignItems: "center", gap: 8 }}
       >
-        Sign in
+        <span className="avatar" style={{ width: 22, height: 22, fontSize: 11 }}>
+          {currentUser?.initials || "U"}
+        </span>
+        <span>{currentUser?.name || "Account"}</span>
         <Icon name="arrowDown" size={12} className="" />
       </button>
       {open && (
@@ -82,40 +85,14 @@ function PortalUserMenu({ role, theme, onThemeChange, onRoleChange }) {
             width: 240,
           }}
         >
-          <div className="user-menu-section-label">View as</div>
-          <button
-            className={`user-menu-item ${role.id === "customer" ? "on" : ""}`}
-            onClick={() => {
-              onRoleChange(CUSTOMER_ROLE.id);
-              setOpen(false);
-            }}
-          >
-            <Icon name="users" size={14} className="" />
-            Customer (help portal)
-          </button>
-          {ROLES.map((r) => (
-            <button
-              key={r.id}
-              className={`user-menu-item ${role.id === r.id ? "on" : ""}`}
-              onClick={() => {
-                onRoleChange(r.id);
-                setOpen(false);
-              }}
-            >
-              <Icon
-                name={
-                  r.id === "agent"
-                    ? "inbox"
-                    : r.id === "manager"
-                    ? "chart"
-                    : "settings"
-                }
-                size={14}
-                className=""
-              />
-              {r.label}
-            </button>
-          ))}
+          <div className="user-menu-header">
+            <div style={{ fontSize: 13, fontWeight: 500 }}>
+              {currentUser?.name}
+            </div>
+            <div style={{ fontSize: 11.5, color: "var(--ink-3)" }}>
+              {currentUser?.email}
+            </div>
+          </div>
 
           <div className="user-menu-section-label">Theme</div>
           <div style={{ padding: "0 6px 6px" }}>
@@ -135,6 +112,20 @@ function PortalUserMenu({ role, theme, onThemeChange, onRoleChange }) {
                 Dark
               </button>
             </div>
+          </div>
+
+          <div style={{ padding: 6 }}>
+            <button
+              className="btn btn-sm"
+              style={{ width: "100%", justifyContent: "center" }}
+              onClick={() => {
+                setOpen(false);
+                onSignOut?.();
+              }}
+            >
+              <Icon name="shield" size={12} className="" />
+              Sign out
+            </button>
           </div>
         </div>
       )}

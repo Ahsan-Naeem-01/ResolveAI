@@ -1,19 +1,25 @@
-/* Thin fetch wrapper — Vite dev server proxies /api → http://localhost:8000 */
+/* Thin fetch wrapper — Vite dev server proxies /api → http://localhost:8000.
+   Attaches the Supabase bearer token to every request. */
+
+import { getAccessToken } from "./auth.jsx";
 
 const BASE = "";
 
 async function request(path, options = {}) {
-  const res = await fetch(`${BASE}${path}`, {
-    headers: { "Content-Type": "application/json", ...(options.headers || {}) },
-    ...options,
-  });
+  const headers = { "Content-Type": "application/json", ...(options.headers || {}) };
+  const token = await getAccessToken();
+  if (token) headers.Authorization = `Bearer ${token}`;
+
+  const res = await fetch(`${BASE}${path}`, { ...options, headers });
   if (!res.ok) {
     let detail = res.statusText;
     try {
       const j = await res.json();
       detail = j.detail || JSON.stringify(j);
     } catch {}
-    throw new Error(`${res.status} — ${detail}`);
+    const err = new Error(`${res.status} — ${detail}`);
+    err.status = res.status;
+    throw err;
   }
   if (res.status === 204) return null;
   return res.json();
@@ -60,6 +66,7 @@ export const api = {
   managerDashboard: () => request("/api/analytics/manager"),
   adminDashboard: () => request("/api/analytics/admin"),
   listAgents: () => request("/api/agents"),
+  me: () => request("/api/agents/me"),
   faqs: (intent) =>
     request(`/api/faq${intent ? `?intent=${encodeURIComponent(intent)}` : ""}`),
 

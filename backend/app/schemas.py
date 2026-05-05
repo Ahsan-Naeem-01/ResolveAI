@@ -15,8 +15,6 @@ class UserOut(BaseModel):
 
 class ProcessQueryIn(BaseModel):
     query: str = Field(..., min_length=1)
-    customer_email: Optional[str] = None
-    customer_name: Optional[str] = None
     channel: str = "web"
     attachments: Optional[list[dict[str, Any]]] = None
 

@@ -1,6 +1,5 @@
 import { Fragment, useEffect, useRef, useState } from "react";
 import Icon from "./Icon.jsx";
-import { ROLES, CUSTOMER_ROLE } from "../lib/roles.js";
 
 /* AppShell — persistent staff layout (sidebar + header).
    Used by Agent / Manager / Admin screens. The Customer surface uses a
@@ -8,16 +7,13 @@ import { ROLES, CUSTOMER_ROLE } from "../lib/roles.js";
 
 export default function AppShell({
   role,
-  onRoleChange,
   theme,
   onThemeChange,
+  onSignOut,
   activeNavId,
   onNavChange,
   children,
 }) {
-  // The active nav id can be controlled by the screen (preferred) or fall back
-  // to the role's default. This keeps existing screens (Manager / Admin) that
-  // don't yet route between sub-views working as before.
   const currentNav = activeNavId ?? role.activeNavId;
 
   return (
@@ -63,7 +59,7 @@ export default function AppShell({
           role={role}
           theme={theme}
           onThemeChange={onThemeChange}
-          onRoleChange={onRoleChange}
+          onSignOut={onSignOut}
         />
       </aside>
 
@@ -92,7 +88,7 @@ export function Header({ crumb, title, actions, hasSearch = true }) {
   );
 }
 
-function UserMenu({ role, theme, onThemeChange, onRoleChange }) {
+function UserMenu({ role, theme, onThemeChange, onSignOut }) {
   const [open, setOpen] = useState(false);
   const ref = useRef(null);
 
@@ -121,44 +117,9 @@ function UserMenu({ role, theme, onThemeChange, onRoleChange }) {
           <div className="user-menu-header">
             <div style={{ fontSize: 13, fontWeight: 500 }}>{role.user.name}</div>
             <div style={{ fontSize: 11.5, color: "var(--ink-3)" }}>
-              {role.user.role}
+              {role.user.email || role.user.role}
             </div>
           </div>
-
-          <div className="user-menu-section-label">View as</div>
-          <button
-            className={`user-menu-item ${role.id === "customer" ? "on" : ""}`}
-            onClick={() => {
-              onRoleChange(CUSTOMER_ROLE.id);
-              setOpen(false);
-            }}
-          >
-            <Icon name="users" size={14} className="" />
-            Customer (help portal)
-          </button>
-          {ROLES.map((r) => (
-            <button
-              key={r.id}
-              className={`user-menu-item ${role.id === r.id ? "on" : ""}`}
-              onClick={() => {
-                onRoleChange(r.id);
-                setOpen(false);
-              }}
-            >
-              <Icon
-                name={
-                  r.id === "agent"
-                    ? "inbox"
-                    : r.id === "manager"
-                    ? "chart"
-                    : "settings"
-                }
-                size={14}
-                className=""
-              />
-              {r.label}
-            </button>
-          ))}
 
           <div className="user-menu-section-label">Theme</div>
           <div style={{ padding: "0 6px 6px" }}>
@@ -178,6 +139,20 @@ function UserMenu({ role, theme, onThemeChange, onRoleChange }) {
                 Dark
               </button>
             </div>
+          </div>
+
+          <div style={{ padding: 6 }}>
+            <button
+              className="btn btn-sm"
+              style={{ width: "100%", justifyContent: "center" }}
+              onClick={() => {
+                setOpen(false);
+                onSignOut?.();
+              }}
+            >
+              <Icon name="shield" size={12} className="" />
+              Sign out
+            </button>
           </div>
         </div>
       )}

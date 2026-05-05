@@ -233,10 +233,24 @@ python -m backend.app.seed
   embeddings (sentence-transformers) and replace the classifier in
   [`classifier.py`](backend/app/nlp/classifier.py) similarly.
 
+## Authentication
+
+ResolveAI uses [Supabase Auth](https://supabase.com/docs/guides/auth) — see
+[SUPABASE_SETUP.md](SUPABASE_SETUP.md) for the full setup walkthrough.
+
+- Sign-up captures the user's chosen role (`customer` / `agent` / `manager` /
+  `admin`) into Supabase `user_metadata`.
+- The frontend keeps the session in `localStorage` (Supabase default) and
+  attaches the bearer token to every `/api/*` call.
+- The backend verifies the JWT against `SUPABASE_JWT_SECRET` and enforces
+  per-role guards: only customers may submit tickets, only staff may read /
+  reply / send, only managers+ see manager analytics, only admins see admin
+  analytics.
+- For trusted role elevation, set `app_metadata.role` from the Supabase
+  dashboard — the backend honors it over the user-editable `user_metadata`.
+
 ## Known scope cuts
 
-- **No real auth** — the role switcher in the user menu lets you preview every
-  perspective. Production should add JWT and per-role guards.
 - **System Admin / Developer view** (project.md §3.5) — not built. Would be
   a fifth screen showing model metrics (already persisted in `model_metrics`
   table) + system health.

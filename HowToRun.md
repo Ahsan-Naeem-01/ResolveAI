@@ -1,6 +1,10 @@
 
 # How to run
 
+> **First time?** Set up Supabase Auth before running anything — see
+> [SUPABASE_SETUP.md](SUPABASE_SETUP.md). You need a `backend/.env` and a
+> `frontend-vite/.env` with the right keys, otherwise login/signup will fail.
+
 ## Backend
 
 From the repo root:
