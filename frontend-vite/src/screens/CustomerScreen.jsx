@@ -8,12 +8,12 @@ const DEFAULT_QUERY =
   "Hi, I ordered the Aurora ceramic mug set (order #12345) and one of them arrived shattered. The packaging was crushed. I'd like a refund please — really disappointed because it was a gift.";
 
 const STEP_TEMPLATE = [
-  { name: "Preprocessing", desc: "Tokenizing & normalizing" },
-  { name: "Intent classification", desc: "Routing your message" },
-  { name: "Entity extraction", desc: "Order, product, dates" },
-  { name: "Sentiment & urgency", desc: "Detecting tone" },
-  { name: "Semantic search", desc: "Finding similar resolved cases" },
-  { name: "Response generation", desc: "Composing reply" },
+  { name: "Reading your message", desc: "Understanding the details" },
+  { name: "Identifying the issue", desc: "Figuring out how we can help" },
+  { name: "Finding your order", desc: "Looking up order, product, dates" },
+  { name: "Checking priority", desc: "Detecting urgency" },
+  { name: "Choosing the right team", desc: "Routing your case" },
+  { name: "Confirming next steps", desc: "Preparing your update" },
 ];
 
 const SUGGESTIONS = [
@@ -266,33 +266,12 @@ function DoneView({ result, ticketCode }) {
 
       <div className="card">
         <div className="card-header">
-          <Icon name="chat" size={14} className="" />
-          <div className="card-title">Suggested reply</div>
-          <span className="muted small" style={{ marginLeft: "auto" }}>
-            {(result.intent_confidence * 100).toFixed(0)}% confidence
-          </span>
-        </div>
-        <div
-          className="card-body"
-          style={{
-            fontSize: 13.5,
-            lineHeight: 1.6,
-            color: "var(--ink-2)",
-            whiteSpace: "pre-wrap",
-          }}
-        >
-          {result.auto_reply}
-        </div>
-      </div>
-
-      <div className="card">
-        <div className="card-header">
           <Icon name="layers" size={14} className="" />
-          <div className="card-title">What we understood</div>
+          <div className="card-title">Your request summary</div>
         </div>
         <div className="card-body">
           <div className="meta-list">
-            <span className="meta-key">Intent</span>
+            <span className="meta-key">Issue type</span>
             <span className="meta-val">{result.intent}</span>
             {result.entities.order_id && (
               <>
@@ -312,17 +291,7 @@ function DoneView({ result, ticketCode }) {
                 <span className="meta-val mono">{result.entities.date}</span>
               </>
             )}
-            <span className="meta-key">Sentiment</span>
-            <span className="meta-val">{result.sentiment}</span>
-            <span className="meta-key">Keywords</span>
-            <span className="meta-val">
-              {result.keywords.map((k) => (
-                <span key={k} className="pill" style={{ marginRight: 4 }}>
-                  {k}
-                </span>
-              ))}
-            </span>
-            <span className="meta-key">Routed to</span>
+            <span className="meta-key">Handled by</span>
             <span className="meta-val">{result.ticket_route}</span>
           </div>
           <div className="divider" />
@@ -336,39 +305,6 @@ function DoneView({ result, ticketCode }) {
           </div>
         </div>
       </div>
-
-      {result.similar_tickets && result.similar_tickets.length > 0 && (
-        <div className="card">
-          <div className="card-header">
-            <Icon name="compass" size={14} className="" />
-            <div className="card-title">Similar resolved cases</div>
-          </div>
-          <div style={{ padding: 0 }}>
-            {result.similar_tickets.map((s) => (
-              <div
-                key={s.id}
-                style={{
-                  padding: "12px 18px",
-                  borderBottom: "1px solid var(--line)",
-                }}
-              >
-                <div className="row">
-                  <span className="mono small muted">{s.id}</span>
-                  <span
-                    className="pill pill-accent"
-                    style={{ marginLeft: "auto", fontSize: 10 }}
-                  >
-                    {Math.round((s.similarity || 0) * 100)}% match
-                  </span>
-                </div>
-                <div className="small" style={{ marginTop: 4, color: "var(--ink-2)" }}>
-                  {s.summary}
-                </div>
-              </div>
-            ))}
-          </div>
-        </div>
-      )}
     </div>
   );
 }
