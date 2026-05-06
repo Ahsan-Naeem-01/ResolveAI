@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import PortalLayout from "../components/PortalLayout.jsx";
 import Icon from "../components/Icon.jsx";
 import ChatPanel from "../components/ChatPanel.jsx";
+import FAQCenter from "../components/FAQCenter.jsx";
 import { api } from "../lib/api.js";
 import { URGENCY_CLASS, STATUS_CLASS, STATUS_LABEL } from "../lib/format.js";
 
@@ -25,12 +26,15 @@ const SUGGESTIONS = [
 ];
 
 export default function CustomerScreen(shellProps) {
-  // Tab state lets the customer switch between submitting a new request
-  // and viewing the chat threads of their existing tickets.
-  const [tab, setTab] = useState("new"); // "new" | "tickets"
+  // Tab state lets the customer switch between submitting a new request,
+  // viewing the chat threads of their existing tickets, or browsing FAQs.
+  const [tab, setTab] = useState("new"); // "new" | "tickets" | "faq"
   const [activeTicket, setActiveTicket] = useState(null);
   const [myTickets, setMyTickets] = useState([]);
   const [myUserId, setMyUserId] = useState(null);
+  // When the user clicks "Submit a request" from an FAQ, we seed the
+  // textarea on the New-request tab with relevant context.
+  const [seedQuery, setSeedQuery] = useState(null);
 
   useEffect(() => {
     api.me().then((u) => setMyUserId(u?.id ?? null)).catch(() => {});
@@ -58,8 +62,19 @@ export default function CustomerScreen(shellProps) {
     await refreshMyTickets();
   };
 
+  // Switch to the new-request tab with optional seed text from an FAQ.
+  const goToNewRequest = (seed) => {
+    setSeedQuery(seed || null);
+    setTab("new");
+    setActiveTicket(null);
+  };
+
   return (
-    <PortalLayout {...shellProps}>
+    <PortalLayout
+      {...shellProps}
+      onOpenFAQ={() => setTab("faq")}
+      onOpenTickets={() => setTab("tickets")}
+    >
       <div className="portal-tabs">
         <button
           type="button"
@@ -83,9 +98,23 @@ export default function CustomerScreen(shellProps) {
             <span className="portal-tab-badge">{myTickets.length}</span>
           )}
         </button>
+        <button
+          type="button"
+          className={`portal-tab ${tab === "faq" ? "on" : ""}`}
+          onClick={() => setTab("faq")}
+        >
+          <Icon name="book" size={13} className="" />
+          Help center
+        </button>
       </div>
 
-      {tab === "new" && <NewRequest onCreated={handleTicketCreated} />}
+      {tab === "new" && (
+        <NewRequest
+          onCreated={handleTicketCreated}
+          seedQuery={seedQuery}
+          onSeedConsumed={() => setSeedQuery(null)}
+        />
+      )}
 
       {tab === "tickets" && (
         <MyTickets
@@ -100,6 +129,8 @@ export default function CustomerScreen(shellProps) {
           }}
         />
       )}
+
+      {tab === "faq" && <FAQCenter onSubmitRequest={goToNewRequest} />}
     </PortalLayout>
   );
 }
@@ -108,13 +139,26 @@ export default function CustomerScreen(shellProps) {
    "New request" — the original landing flow
    ───────────────────────────────────────────────────────────── */
 
-function NewRequest({ onCreated }) {
+function NewRequest({ onCreated, seedQuery, onSeedConsumed }) {
   const [stage, setStage] = useState("idle"); // idle | processing | done | error
   const [step, setStep] = useState(-1);
   const [query, setQuery] = useState(DEFAULT_QUERY);
   const [result, setResult] = useState(null);
   const [error, setError] = useState(null);
   const [ticketCode, setTicketCode] = useState(null);
+
+  // If we arrived from an FAQ "Submit a request" button, replace the
+  // textarea with the user-provided context (e.g. "I need more help with…").
+  useEffect(() => {
+    if (seedQuery) {
+      setQuery(seedQuery);
+      setStage("idle");
+      setResult(null);
+      setError(null);
+      onSeedConsumed?.();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [seedQuery]);
 
   async function start() {
     if (!query.trim()) return;

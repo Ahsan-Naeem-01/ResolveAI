@@ -9,6 +9,8 @@ export default function PortalLayout({
   onThemeChange,
   onSignOut,
   currentUser,
+  onOpenFAQ,
+  onOpenTickets,
   children,
 }) {
   return (
@@ -29,8 +31,22 @@ export default function PortalLayout({
           </span>
         </div>
         <div className="portal-nav-actions">
-          <button className="btn btn-ghost btn-sm">Track an order</button>
-          <button className="btn btn-ghost btn-sm">FAQs</button>
+          <button
+            type="button"
+            className="btn btn-ghost btn-sm"
+            onClick={() => onOpenTickets?.()}
+          >
+            <Icon name="chat" size={12} className="" />
+            My tickets
+          </button>
+          <button
+            type="button"
+            className="btn btn-ghost btn-sm"
+            onClick={() => onOpenFAQ?.()}
+          >
+            <Icon name="book" size={12} className="" />
+            FAQs
+          </button>
           <PortalUserMenu
             currentUser={currentUser}
             theme={theme}
