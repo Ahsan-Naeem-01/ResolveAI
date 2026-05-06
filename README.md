@@ -3,7 +3,9 @@
 End-to-end implementation of the platform spec'd in [`project.md`](project.md).
 NLP pipeline classifies customer queries, extracts entities, retrieves similar
 resolved cases, drafts replies, and routes tickets — backed by a real SQLite
-database, a FastAPI backend, and a Vite + React frontend.
+database, a FastAPI backend, and a Vite + React frontend. Authentication is
+handled by Supabase, with per-role guards enforced server-side
+(see [SUPABASE_SETUP.md](SUPABASE_SETUP.md)).
 
 ## Architecture
 

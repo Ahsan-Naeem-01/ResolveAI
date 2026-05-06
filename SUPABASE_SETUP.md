@@ -12,17 +12,32 @@ backend verifies the resulting JWT on every protected request.
 
 ## 2 · Grab the keys
 
-In the project dashboard, open **Project Settings → API**. You need three
-values:
+In the project dashboard, open **Project Settings → API**.
+
+**For new projects** (asymmetric ES256 — the current default):
 
 | Value | Used by | Where it goes |
 |-------|---------|---------------|
 | **Project URL** (e.g. `https://abc123.supabase.co`) | frontend + backend | `VITE_SUPABASE_URL` and `SUPABASE_PROJECT_URL` |
-| **`anon` public key** (long JWT) | frontend | `VITE_SUPABASE_ANON_KEY` |
+| **`anon` public key** | frontend | `VITE_SUPABASE_ANON_KEY` |
+
+The backend fetches the public signing key from
+`<project-url>/auth/v1/.well-known/jwks.json` automatically — there is no
+secret to copy. `SUPABASE_JWT_SECRET` should stay blank.
+
+**For legacy projects** (HS256 — older projects that haven't rotated keys):
+
+| Value | Used by | Where it goes |
+|-------|---------|---------------|
+| **Project URL** | frontend + backend | `VITE_SUPABASE_URL` and `SUPABASE_PROJECT_URL` |
+| **`anon` public key** | frontend | `VITE_SUPABASE_ANON_KEY` |
 | **JWT Secret** (under "JWT Settings") | backend only | `SUPABASE_JWT_SECRET` |
 
-> ⚠️ **The JWT Secret is sensitive.** It must NOT ship to the browser. Only
-> the backend uses it (to verify signed access tokens).
+> ⚠️ **The JWT Secret is sensitive.** It must NOT ship to the browser.
+
+The backend auto-detects which path to use based on the `alg` header in each
+incoming token, so it's safe to leave both `SUPABASE_PROJECT_URL` and
+`SUPABASE_JWT_SECRET` set if you're unsure which format your project issues.
 
 ## 3 · Configure auth providers
 
@@ -149,11 +164,20 @@ user without sufficient privilege returns **403**.
 
 ## Troubleshooting
 
-- **"Server misconfigured: SUPABASE_JWT_SECRET not set"** — `backend/.env`
-  is missing or wasn't loaded. Restart the backend after editing `.env`.
-- **"Invalid token: ..."** — usually means the JWT secret in `backend/.env`
-  doesn't match the one in the Supabase dashboard. Double-check you copied
-  the **JWT Secret** (not the anon key).
+- **"The specified alg value is not allowed"** — your project issues
+  asymmetric (ES256) tokens but `SUPABASE_PROJECT_URL` is unset. Fill it in
+  and restart the backend. (The backend now auto-fetches the public key from
+  the JWKS endpoint.)
+- **"Server misconfigured: SUPABASE_PROJECT_URL not set"** — same as above.
+- **"Server misconfigured: SUPABASE_JWT_SECRET not set"** — your project
+  issues legacy HS256 tokens. Paste the "JWT Secret" from the dashboard
+  into `backend/.env` and restart.
+- **"Could not fetch JWKS: ..."** — the JWKS endpoint isn't reachable from
+  the backend. Check the project URL is correct and the backend host has
+  internet access.
+- **"Invalid token: ..."** — usually means the project URL or JWT secret in
+  `backend/.env` doesn't match the project that issued the token (e.g. you
+  switched Supabase projects but didn't update the env).
 - **Can't sign up** — make sure email auth is enabled in Supabase, and that
   "Confirm email" is off for local dev (otherwise check your inbox for the
   confirmation link).
