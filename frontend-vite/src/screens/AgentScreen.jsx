@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import AppShell, { Header } from "../components/AppShell.jsx";
 import Icon from "../components/Icon.jsx";
 import { Skeleton, SkeletonCard } from "../components/Skeleton.jsx";
+import ChatPanel from "../components/ChatPanel.jsx";
 import { api } from "../lib/api.js";
 import { URGENCY_CLASS, STATUS_CLASS, STATUS_LABEL } from "../lib/format.js";
 import KnowledgeBase from "./KnowledgeBase.jsx";
@@ -329,6 +330,7 @@ export default function AgentScreen({ toast, currentUser, ...shellProps }) {
                   onAssignMe={assignToMe}
                   onUnassign={unassign}
                   onOpenRoute={() => setRouteOpen(true)}
+                  onConversationUpdate={refreshList}
                   myUserId={myUserId}
                 />
               )}
@@ -537,6 +539,7 @@ function TicketDetail({
   onAssignMe,
   onUnassign,
   onOpenRoute,
+  onConversationUpdate,
   myUserId,
 }) {
   const [kbSuggestions, setKbSuggestions] = useState([]);
@@ -636,32 +639,22 @@ function TicketDetail({
             )}
           </div>
         </div>
-        <div className="card-body">
+        <div className="card-body" style={{ paddingBottom: 0 }}>
           <div
             style={{
               fontSize: 16,
               fontWeight: 600,
               letterSpacing: "-0.015em",
-              marginBottom: 8,
+              marginBottom: 4,
               color: "var(--ink)",
             }}
           >
             {ticket.subject}
           </div>
-          <div
-            style={{
-              color: "var(--ink-2)",
-              lineHeight: 1.6,
-              fontSize: 13.5,
-              whiteSpace: "pre-wrap",
-            }}
-          >
-            {ticket.body}
-          </div>
           {ticket.attachments && ticket.attachments.length > 0 && (
-            <div className="row" style={{ marginTop: 14, gap: 10 }}>
-              <div className="upload-thumb">
-                <Icon name="paperclip" size={16} className="" />
+            <div className="row" style={{ marginTop: 10, marginBottom: 4, gap: 10 }}>
+              <div className="upload-thumb" style={{ width: 36, height: 36 }}>
+                <Icon name="paperclip" size={14} className="" />
               </div>
               <div>
                 <div className="small" style={{ fontWeight: 500 }}>
@@ -674,6 +667,15 @@ function TicketDetail({
               </div>
             </div>
           )}
+        </div>
+        <div style={{ borderTop: "1px solid var(--line)", marginTop: 4 }}>
+          <ChatPanel
+            code={ticket.id}
+            currentUserId={myUserId}
+            currentUserRole="agent"
+            onNewMessages={onConversationUpdate}
+            className="chat-panel-embedded"
+          />
         </div>
       </div>
 

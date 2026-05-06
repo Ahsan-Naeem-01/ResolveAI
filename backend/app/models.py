@@ -77,6 +77,9 @@ class Ticket(Base):
             "order": (self.entities or {}).get("order_id", "—") or "—",
             "product": (self.entities or {}).get("product", "—") or "—",
             "keywords": self.keywords or [],
+            "assignee_id": self.assignee_id,
+            "assignee_name": self.assignee.name if self.assignee else None,
+            "assignee_initials": self.assignee.initials if self.assignee else None,
         }
 
 
@@ -183,6 +186,24 @@ class ModelMetric(Base):
     f1_macro = Column(Float)
     n_samples = Column(Integer)
     trained_at = Column(DateTime, default=_now)
+
+
+class RoutingLog(Base):
+    """Records when a ticket is routed (forwarded) to another department."""
+    __tablename__ = "routing_logs"
+    id = Column(Integer, primary_key=True)
+    ticket_id = Column(Integer, ForeignKey("tickets.id"), nullable=False)
+    routed_by_id = Column(Integer, ForeignKey("users.id"), nullable=True)
+    department = Column(String, nullable=False)
+    recipient_email = Column(String, nullable=False)
+    subject = Column(String, nullable=False)
+    message = Column(Text, nullable=False)
+    delivery_status = Column(String, default="simulated")  # sent | simulated | failed
+    delivery_detail = Column(Text, default="")
+    created_at = Column(DateTime, default=_now)
+
+    ticket = relationship("Ticket")
+    routed_by = relationship("User")
 
 
 def _humanize_age(dt):

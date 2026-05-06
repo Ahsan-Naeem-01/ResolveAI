@@ -77,6 +77,18 @@ export const api = {
 
   listDepartments: () => request("/api/tickets/_meta/departments"),
 
+  // ── Chat / live messages ─────────────────────────────────────
+  getMessages: (code, since = 0) =>
+    request(`/api/tickets/${code}/messages?since=${since}`),
+
+  postMessage: (code, body) =>
+    request(`/api/tickets/${code}/messages`, {
+      method: "POST",
+      body: JSON.stringify({ body }),
+    }),
+
+  myTickets: () => request("/api/tickets/customer/me"),
+
   managerDashboard: () => request("/api/analytics/manager"),
   adminDashboard: () => request("/api/analytics/admin"),
   listAgents: () => request("/api/agents"),

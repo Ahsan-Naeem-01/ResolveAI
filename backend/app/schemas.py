@@ -66,6 +66,9 @@ class TicketOut(BaseModel):
     order: str
     product: str
     keywords: list[str] = []
+    assignee_id: Optional[int] = None
+    assignee_name: Optional[str] = None
+    assignee_initials: Optional[str] = None
 
 
 class TicketDetailOut(TicketOut):
@@ -77,6 +80,7 @@ class TicketDetailOut(TicketOut):
     similar_tickets: list[dict[str, Any]] = []
     replies: list[ReplyOut] = []
     attachments: list[dict[str, Any]] = []
+    routing_history: list[dict[str, Any]] = []
 
 
 class ReplyUpdateIn(BaseModel):
@@ -95,6 +99,95 @@ class SendReplyIn(BaseModel):
 class TicketStatusUpdateIn(BaseModel):
     status: str
     csat: Optional[float] = None
+
+
+class AssignTicketIn(BaseModel):
+    """Assign a ticket to a user. Pass `null` for `assignee_id` to unassign,
+    or omit and pass `to_me=True` to assign to the current user."""
+    assignee_id: Optional[int] = None
+    to_me: bool = False
+
+
+class RouteTicketIn(BaseModel):
+    """Forward / route a ticket to a department by sending an email."""
+    department: str = Field(..., min_length=1, max_length=80)
+    recipient_email: str = Field(..., min_length=3, max_length=200)
+    subject: Optional[str] = None
+    message: str = Field(..., min_length=1)
+    cc: list[str] = []
+    mark_escalated: bool = True
+
+
+class RoutingLogOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+    id: int
+    department: str
+    recipient_email: str
+    subject: str
+    message: str
+    delivery_status: str
+    delivery_detail: str = ""
+    routed_by: Optional[str] = None
+    created_at: datetime
+
+
+class DepartmentOut(BaseModel):
+    """A routing destination — name + a default contact address."""
+    name: str
+    email: str
+    intents: list[str] = []
+
+
+# ── Chat / messages ─────────────────────────────────────────────
+
+
+class ChatMessageOut(BaseModel):
+    """A single message in the customer↔agent thread."""
+    id: int  # 0 for the synthetic "ticket body" first message
+    ticket_id: str
+    sender_role: str  # customer | agent | manager | admin | ai
+    sender_name: str
+    sender_initials: str
+    body: str
+    is_ai: bool = False
+    is_system: bool = False
+    created_at: datetime
+
+
+class CustomerReplyIn(BaseModel):
+    body: str = Field(..., min_length=1, max_length=8000)
+
+
+class TicketStatusOut(BaseModel):
+    """Lightweight status snapshot — used by the chat polling endpoint so
+    the client can show 'agent is working' / 'resolved' without a full
+    ticket re-fetch."""
+    id: str
+    status: str
+    assignee_name: Optional[str] = None
+    assignee_initials: Optional[str] = None
+    is_typing: bool = False  # reserved — placeholder for future typing indicator
+    updated_at: Optional[datetime] = None
+    last_message_id: int = 0
+
+
+class ChatPollOut(BaseModel):
+    """Combined response — new messages + ticket status snapshot."""
+    messages: list[ChatMessageOut]
+    status: TicketStatusOut
+
+
+class CustomerTicketSummary(BaseModel):
+    """A compact ticket summary for the customer's 'My tickets' list."""
+    id: str
+    subject: str
+    status: str
+    intent: Optional[str] = None
+    urgency: Optional[str] = None
+    last_message_preview: str = ""
+    last_message_at: Optional[datetime] = None
+    unread_from_agent: int = 0
+    created_at: datetime
 
 
 class FAQOut(BaseModel):
