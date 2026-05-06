@@ -63,6 +63,20 @@ export const api = {
       body: JSON.stringify({ body }),
     }),
 
+  assignTicket: (code, { assigneeId = null, toMe = false } = {}) =>
+    request(`/api/tickets/${code}/assign`, {
+      method: "POST",
+      body: JSON.stringify({ assignee_id: assigneeId, to_me: toMe }),
+    }),
+
+  routeTicket: (code, payload) =>
+    request(`/api/tickets/${code}/route`, {
+      method: "POST",
+      body: JSON.stringify(payload),
+    }),
+
+  listDepartments: () => request("/api/tickets/_meta/departments"),
+
   managerDashboard: () => request("/api/analytics/manager"),
   adminDashboard: () => request("/api/analytics/admin"),
   listAgents: () => request("/api/agents"),

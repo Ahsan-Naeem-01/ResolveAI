@@ -15,16 +15,43 @@ export default function AppShell({
   children,
 }) {
   const currentNav = activeNavId ?? role.activeNavId;
+  // Mobile sidebar drawer — collapsed by default, opens via the menu button.
+  const [mobileOpen, setMobileOpen] = useState(false);
+
+  // Auto-close the drawer when the user picks an item or resizes back to
+  // desktop (≥900px) so the state doesn't get "stuck open".
+  useEffect(() => {
+    const handler = () => {
+      if (window.innerWidth >= 900) setMobileOpen(false);
+    };
+    window.addEventListener("resize", handler);
+    return () => window.removeEventListener("resize", handler);
+  }, []);
 
   return (
-    <div className="app">
-      <aside className="side">
+    <div className={`app ${mobileOpen ? "mobile-nav-open" : ""}`}>
+      {mobileOpen && (
+        <div
+          className="side-overlay"
+          onClick={() => setMobileOpen(false)}
+          aria-hidden
+        />
+      )}
+      <aside className={`side ${mobileOpen ? "side-open" : ""}`}>
         <div className="side-brand">
           <div className="side-brand-mark">R</div>
-          <div>
+          <div style={{ flex: 1, minWidth: 0 }}>
             <div className="side-brand-name">ResolveAI</div>
             <div className="side-brand-tag">{role.user.role}</div>
           </div>
+          <button
+            type="button"
+            className="btn btn-ghost btn-icon side-close-btn"
+            onClick={() => setMobileOpen(false)}
+            aria-label="Close menu"
+          >
+            <Icon name="x" size={14} className="" />
+          </button>
         </div>
 
         <nav className="side-nav">
@@ -35,6 +62,7 @@ export default function AppShell({
                 const isActive = currentNav === it.id;
                 const handleClick = () => {
                   if (onNavChange) onNavChange(it.id);
+                  setMobileOpen(false);
                 };
                 return (
                   <button
@@ -63,8 +91,35 @@ export default function AppShell({
         />
       </aside>
 
-      <main className="main">{children}</main>
+      <main className="main">
+        <button
+          type="button"
+          className="btn btn-ghost btn-icon mobile-menu-btn"
+          onClick={() => setMobileOpen(true)}
+          aria-label="Open menu"
+        >
+          <MenuIcon />
+        </button>
+        {children}
+      </main>
     </div>
+  );
+}
+
+function MenuIcon() {
+  return (
+    <svg
+      width={18}
+      height={18}
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.6"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    >
+      <path d="M3 6h18M3 12h18M3 18h18" />
+    </svg>
   );
 }
 

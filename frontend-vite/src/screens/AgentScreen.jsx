@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import AppShell, { Header } from "../components/AppShell.jsx";
 import Icon from "../components/Icon.jsx";
 import { Skeleton, SkeletonCard } from "../components/Skeleton.jsx";
@@ -13,7 +13,27 @@ const FILTERS = [
   { id: "needs-review", label: "Needs review" },
 ];
 
-export default function AgentScreen({ toast, ...shellProps }) {
+// Each side-nav id → server-side filter applied to GET /api/tickets.
+// Filters are merged with the chip-bar filter (urgency/needs-review).
+const NAV_FILTERS = {
+  inbox: {},
+  mine: { assignee: "me" },
+  watch: { assignee: "unassigned" },
+  review: { status: "needs-review" },
+  resolved: { status: "resolved" },
+  escalated: { status: "escalated" },
+};
+
+const NAV_TITLES = {
+  inbox: { crumb: "Tickets", title: "Inbox" },
+  mine: { crumb: "Tickets", title: "Assigned to me" },
+  watch: { crumb: "Tickets", title: "Unassigned (watching)" },
+  review: { crumb: "Tickets", title: "Needs review" },
+  resolved: { crumb: "Tickets", title: "Auto-resolved" },
+  escalated: { crumb: "Tickets", title: "Escalated" },
+};
+
+export default function AgentScreen({ toast, currentUser, ...shellProps }) {
   const [tickets, setTickets] = useState([]);
   const [activeCode, setActiveCode] = useState(null);
   const [filter, setFilter] = useState("All");
@@ -27,11 +47,27 @@ export default function AgentScreen({ toast, ...shellProps }) {
   const [llmInfo, setLlmInfo] = useState({ enabled: false, model: null });
   const [replySource, setReplySource] = useState(null); // "llm" | "template" | null
   const [activeNavId, setActiveNavId] = useState("inbox");
+  const [routeOpen, setRouteOpen] = useState(false);
+  const [departments, setDepartments] = useState([]);
+  // The backend's integer user id (distinct from the Supabase UUID we get
+  // in `currentUser`). We use this to compare against ticket.assignee_id.
+  const [backendUserId, setBackendUserId] = useState(null);
+  // Mobile detail-pane toggle: on small screens we show either the list OR
+  // the detail, not both. Selecting a ticket flips this flag.
+  const [showDetailMobile, setShowDetailMobile] = useState(false);
 
   useEffect(() => {
     api
       .llmStatus()
       .then((s) => setLlmInfo(s))
+      .catch(() => {});
+    api
+      .listDepartments()
+      .then((d) => setDepartments(d || []))
+      .catch(() => {});
+    api
+      .me()
+      .then((u) => setBackendUserId(u?.id ?? null))
       .catch(() => {});
   }, []);
 
@@ -45,20 +81,25 @@ export default function AgentScreen({ toast, ...shellProps }) {
   const refreshList = useCallback(async () => {
     try {
       setLoadingList(true);
-      const params = {};
+      const params = { ...(NAV_FILTERS[activeNavId] || {}) };
       if (filter === "Critical" || filter === "High") params.urgency = filter;
       else if (filter === "needs-review") params.status = "needs-review";
       const list = await api.listTickets(params);
       setTickets(list);
-      if (list.length && !list.find((t) => t.id === activeCode)) {
-        setActiveCode(list[0].id);
+      if (list.length) {
+        if (!list.find((t) => t.id === activeCode)) {
+          setActiveCode(list[0].id);
+        }
+      } else {
+        setActiveCode(null);
+        setDetail(null);
       }
     } catch (e) {
       setError(e.message);
     } finally {
       setLoadingList(false);
     }
-  }, [filter, activeCode]);
+  }, [filter, activeCode, activeNavId]);
 
   useEffect(() => {
     refreshList();
@@ -129,10 +170,77 @@ export default function AgentScreen({ toast, ...shellProps }) {
     }
   }
 
-  // Map sidebar nav id → which view to render. Inbox-style filters all share
-  // the inbox view; the KB id renders the knowledge-base screen.
+  async function assignToMe() {
+    if (!detail) return;
+    setBusy("assign");
+    try {
+      await api.assignTicket(detail.id, { toMe: true });
+      toast?.("Ticket assigned to you");
+      const updated = await api.getTicket(detail.id);
+      setDetail(updated);
+      await refreshList();
+    } catch (e) {
+      setError(e.message);
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  async function unassign() {
+    if (!detail) return;
+    setBusy("assign");
+    try {
+      await api.assignTicket(detail.id, { assigneeId: null });
+      toast?.("Ticket unassigned");
+      const updated = await api.getTicket(detail.id);
+      setDetail(updated);
+      await refreshList();
+    } catch (e) {
+      setError(e.message);
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  async function submitRoute(form) {
+    if (!detail) return;
+    setBusy("route");
+    try {
+      const r = await api.routeTicket(detail.id, form);
+      const sentNote =
+        r.delivery_status === "sent"
+          ? "email sent"
+          : r.delivery_status === "simulated"
+          ? "logged (SMTP not configured)"
+          : "delivery failed";
+      toast?.(`Routed to ${form.department} — ${sentNote}`);
+      setRouteOpen(false);
+      const updated = await api.getTicket(detail.id);
+      setDetail(updated);
+      await refreshList();
+    } catch (e) {
+      setError(e.message);
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  // Map sidebar nav id → which view to render.
   const isKBView = activeNavId === "kb";
   const isMacrosView = activeNavId === "macros";
+  const navMeta = NAV_TITLES[activeNavId] || NAV_TITLES.inbox;
+
+  // Whenever the user switches a nav category, return to the list-view on mobile.
+  useEffect(() => {
+    setShowDetailMobile(false);
+  }, [activeNavId]);
+
+  const handleSelectTicket = (id) => {
+    setActiveCode(id);
+    setShowDetailMobile(true);
+  };
+
+  const myUserId = backendUserId;
 
   return (
     <AppShell
@@ -157,43 +265,51 @@ export default function AgentScreen({ toast, ...shellProps }) {
       ) : (
         <>
           <Header
-            crumb="Tickets"
-            title={`Inbox · ${tickets.length} open`}
+            crumb={navMeta.crumb}
+            title={`${navMeta.title} · ${tickets.length}`}
             actions={
-              <button className="btn btn-primary btn-sm">
-                <Icon name="plus" size={12} className="" /> New ticket
-              </button>
+              <div className="agent-header-actions">
+                {showDetailMobile && (
+                  <button
+                    type="button"
+                    className="btn btn-ghost btn-sm agent-back-btn"
+                    onClick={() => setShowDetailMobile(false)}
+                  >
+                    <Icon name="arrowRight" size={12} className="" />
+                    <span style={{ transform: "scaleX(-1)", display: "inline-block" }}>
+                      ←
+                    </span>
+                    Back
+                  </button>
+                )}
+                <button className="btn btn-primary btn-sm">
+                  <Icon name="plus" size={12} className="" /> New ticket
+                </button>
+              </div>
             }
           />
           <div
-            className="content"
-            style={{
-              display: "grid",
-              gridTemplateColumns: "380px 1fr",
-              gap: 16,
-              minHeight: 0,
-              overflow: "hidden",
-            }}
+            className={`content agent-grid ${showDetailMobile ? "show-detail" : "show-list"}`}
           >
-            <TicketList
-              tickets={tickets}
-              activeCode={activeCode}
-              onSelect={setActiveCode}
-              filter={filter}
-              setFilter={setFilter}
-              loading={loadingList}
-            />
-            <div
-              style={{
-                display: "flex",
-                flexDirection: "column",
-                gap: 16,
-                minHeight: 0,
-                overflow: "auto",
-              }}
-            >
+            <div className="agent-list-pane">
+              <TicketList
+                tickets={tickets}
+                activeCode={activeCode}
+                onSelect={handleSelectTicket}
+                filter={filter}
+                setFilter={setFilter}
+                loading={loadingList}
+                myUserId={myUserId}
+              />
+            </div>
+            <div className="agent-detail-pane">
               {error && <div className="error-banner">{error}</div>}
               {loadingDetail && !detail && <SkeletonCard height={420} />}
+              {!detail && !loadingDetail && (
+                <div className="empty-state" style={{ height: 240 }}>
+                  Select a ticket to view its details.
+                </div>
+              )}
               {detail && (
                 <TicketDetail
                   ticket={detail}
@@ -210,10 +326,25 @@ export default function AgentScreen({ toast, ...shellProps }) {
                   llmInfo={llmInfo}
                   replySource={replySource}
                   onInsertKB={insertIntoReply}
+                  onAssignMe={assignToMe}
+                  onUnassign={unassign}
+                  onOpenRoute={() => setRouteOpen(true)}
+                  myUserId={myUserId}
                 />
               )}
             </div>
           </div>
+
+          {routeOpen && detail && (
+            <RouteModal
+              ticket={detail}
+              departments={departments}
+              busy={busy === "route"}
+              onClose={() => setRouteOpen(false)}
+              onSubmit={submitRoute}
+              currentUser={currentUser}
+            />
+          )}
         </>
       )}
     </AppShell>
@@ -250,20 +381,22 @@ function TicketList({
   filter,
   setFilter,
   loading,
+  myUserId,
 }) {
   return (
     <div
-      className="card"
+      className="card agent-ticket-list"
       style={{
         display: "flex",
         flexDirection: "column",
         overflow: "hidden",
         minHeight: 0,
+        height: "100%",
       }}
     >
       <div
-        className="card-header"
-        style={{ gap: 6, padding: "10px 14px", flexShrink: 0 }}
+        className="card-header agent-filter-bar"
+        style={{ gap: 6, padding: "10px 14px", flexShrink: 0, flexWrap: "wrap" }}
       >
         {FILTERS.map((f) => (
           <button
@@ -298,75 +431,92 @@ function TicketList({
             No tickets matching this filter.
           </div>
         )}
-        {tickets.map((t) => (
-          <div
-            key={t.id}
-            onClick={() => onSelect(t.id)}
-            style={{
-              padding: "12px 14px",
-              borderBottom: "1px solid var(--line)",
-              cursor: "pointer",
-              background:
-                t.id === activeCode ? "var(--accent-soft)" : "transparent",
-              borderLeft:
-                t.id === activeCode
-                  ? "3px solid var(--accent)"
-                  : "3px solid transparent",
-            }}
-          >
-            <div className="row" style={{ marginBottom: 4 }}>
-              <div
-                className="avatar"
-                style={{ width: 24, height: 24, fontSize: 10 }}
-              >
-                {t.initials}
+        {tickets.map((t) => {
+          const mine = myUserId && t.assignee_id === myUserId;
+          return (
+            <div
+              key={t.id}
+              onClick={() => onSelect(t.id)}
+              className="ticket-row"
+              style={{
+                padding: "12px 14px",
+                borderBottom: "1px solid var(--line)",
+                cursor: "pointer",
+                background:
+                  t.id === activeCode ? "var(--accent-soft)" : "transparent",
+                borderLeft:
+                  t.id === activeCode
+                    ? "3px solid var(--accent)"
+                    : "3px solid transparent",
+              }}
+            >
+              <div className="row" style={{ marginBottom: 4 }}>
+                <div
+                  className="avatar"
+                  style={{ width: 24, height: 24, fontSize: 10 }}
+                >
+                  {t.initials}
+                </div>
+                <span style={{ fontWeight: 500, fontSize: 12.5, color: "var(--ink)" }}>
+                  {t.customer}
+                </span>
+                <span
+                  className="mono small muted"
+                  style={{ marginLeft: "auto" }}
+                >
+                  {t.age}
+                </span>
               </div>
-              <span style={{ fontWeight: 500, fontSize: 12.5, color: "var(--ink)" }}>
-                {t.customer}
-              </span>
-              <span
-                className="mono small muted"
-                style={{ marginLeft: "auto" }}
+              <div
+                style={{
+                  fontSize: 12.5,
+                  fontWeight: 500,
+                  marginBottom: 4,
+                  color: "var(--ink)",
+                }}
               >
-                {t.age}
-              </span>
-            </div>
-            <div
-              style={{
-                fontSize: 12.5,
-                fontWeight: 500,
-                marginBottom: 4,
-                color: "var(--ink)",
-              }}
-            >
-              {t.subject}
-            </div>
-            <div
-              className="small muted"
-              style={{
-                display: "-webkit-box",
-                WebkitLineClamp: 1,
-                WebkitBoxOrient: "vertical",
-                overflow: "hidden",
-                marginBottom: 6,
-              }}
-            >
-              {t.snippet}
-            </div>
-            <div className="row" style={{ gap: 4, flexWrap: "wrap" }}>
-              <span className={URGENCY_CLASS[t.urgency] || "pill"}>
-                <span className="pill-dot" /> {t.urgency}
-              </span>
-              <span className="pill">{t.intent}</span>
-              <span
-                className={STATUS_CLASS[t.status] || "pill"}
-                style={{ marginLeft: "auto" }}
+                {t.subject}
+              </div>
+              <div
+                className="small muted"
+                style={{
+                  display: "-webkit-box",
+                  WebkitLineClamp: 1,
+                  WebkitBoxOrient: "vertical",
+                  overflow: "hidden",
+                  marginBottom: 6,
+                }}
               >
-                {STATUS_LABEL[t.status] || t.status}
-              </span>
+                {t.snippet}
+              </div>
+              <div className="row" style={{ gap: 4, flexWrap: "wrap" }}>
+                <span className={URGENCY_CLASS[t.urgency] || "pill"}>
+                  <span className="pill-dot" /> {t.urgency}
+                </span>
+                <span className="pill">{t.intent}</span>
+                {mine && (
+                  <span
+                    className="pill pill-accent"
+                    title="Assigned to you"
+                  >
+                    Mine
+                  </span>
+                )}
+                {!mine && t.assignee_initials && (
+                  <span className="pill" title={`Assigned to ${t.assignee_name}`}>
+                    @{t.assignee_initials}
+                  </span>
+                )}
+                <span
+                  className={STATUS_CLASS[t.status] || "pill"}
+                  style={{ marginLeft: "auto" }}
+                >
+                  {STATUS_LABEL[t.status] || t.status}
+                </span>
+              </div>
             </div>
-          </div>
-        ))}
+          );
+        })}
       </div>
     </div>
   );
@@ -384,6 +534,10 @@ function TicketDetail({
   llmInfo,
   replySource,
   onInsertKB,
+  onAssignMe,
+  onUnassign,
+  onOpenRoute,
+  myUserId,
 }) {
   const [kbSuggestions, setKbSuggestions] = useState([]);
   const [kbLoading, setKbLoading] = useState(false);
@@ -410,24 +564,28 @@ function TicketDetail({
       await api.kbMarkInserted(slug);
       onInsertKB?.(article.body || "");
     } catch (e) {
-      // silent — toast handled at parent on error in actual usage
       console.error(e);
     }
   }
 
   const showLiveBadge = replySource === "llm" || (llmInfo?.enabled && replySource == null);
   const showTemplateBadge = replySource === "template" || (!llmInfo?.enabled && replySource == null);
+
+  const isMine = myUserId && ticket.assignee_id === myUserId;
+  const hasAssignee = !!ticket.assignee_id;
+  const routingHistory = ticket.routing_history || [];
+
   return (
     <>
       <div className="card">
-        <div className="card-header">
+        <div className="card-header agent-detail-head">
           <div
             className="avatar lg"
             style={{ width: 32, height: 32, fontSize: 12 }}
           >
             {ticket.initials}
           </div>
-          <div>
+          <div className="agent-detail-customer">
             <div style={{ fontWeight: 600, color: "var(--ink)" }}>
               {ticket.customer}
             </div>
@@ -436,13 +594,46 @@ function TicketDetail({
               {ticket.age} ago · via {ticket.channel}
             </div>
           </div>
-          <div className="row" style={{ marginLeft: "auto", gap: 6 }}>
+          <div className="row agent-detail-actions" style={{ marginLeft: "auto", gap: 6, flexWrap: "wrap" }}>
+            {hasAssignee && (
+              <span
+                className={`pill ${isMine ? "pill-accent" : ""}`}
+                title={
+                  isMine
+                    ? "Assigned to you"
+                    : `Assigned to ${ticket.assignee_name}`
+                }
+              >
+                <span className="pill-dot" />
+                {isMine ? "Assigned to me" : ticket.assignee_name}
+              </span>
+            )}
             <span className={URGENCY_CLASS[ticket.urgency] || "pill"}>
               <span className="pill-dot" /> {ticket.urgency}
             </span>
-            <button className="btn btn-ghost btn-icon">
-              <Icon name="moreH" size={14} className="" />
-            </button>
+            {!isMine && (
+              <button
+                type="button"
+                className="btn btn-sm btn-ghost"
+                onClick={onAssignMe}
+                disabled={busy === "assign"}
+                title="Take ownership of this ticket"
+              >
+                <Icon name="users" size={12} className="" />
+                {busy === "assign" ? "Saving…" : "Assign to me"}
+              </button>
+            )}
+            {isMine && (
+              <button
+                type="button"
+                className="btn btn-sm btn-ghost"
+                onClick={onUnassign}
+                disabled={busy === "assign"}
+              >
+                <Icon name="x" size={12} className="" />
+                Unassign
+              </button>
+            )}
           </div>
         </div>
         <div className="card-body">
@@ -486,15 +677,9 @@ function TicketDetail({
         </div>
       </div>
 
-      <div
-        style={{
-          display: "grid",
-          gridTemplateColumns: "1fr 360px",
-          gap: 16,
-        }}
-      >
+      <div className="agent-reply-grid">
         <div className="card">
-          <div className="card-header">
+          <div className="card-header agent-reply-head">
             <Icon name="sparkles" size={14} className="" />
             <div className="card-title">AI suggested reply</div>
             <div
@@ -538,7 +723,7 @@ function TicketDetail({
               disabled={ticket.status === "resolved"}
             />
             <div
-              className="row"
+              className="row agent-reply-actions"
               style={{ marginTop: 12, flexWrap: "wrap", gap: 6 }}
             >
               <button
@@ -570,7 +755,10 @@ function TicketDetail({
               >
                 Formal
               </button>
-              <span className="muted small" style={{ marginLeft: "auto" }}>
+              <span
+                className="muted small agent-reply-status"
+                style={{ marginLeft: "auto" }}
+              >
                 {replyEdited ? "Edited by agent" : "AI-drafted, untouched"}
               </span>
               <button
@@ -592,7 +780,7 @@ function TicketDetail({
           </div>
         </div>
 
-        <div className="col" style={{ gap: 14 }}>
+        <div className="col agent-side-rail" style={{ gap: 14 }}>
           <div className="card">
             <div className="card-header" style={{ padding: "12px 14px" }}>
               <Icon name="layers" size={13} className="" />
@@ -613,6 +801,77 @@ function TicketDetail({
                 <span className="meta-key">Route</span>
                 <span className="meta-val">{ticket.route}</span>
               </div>
+              <div
+                className="row"
+                style={{
+                  marginTop: 12,
+                  paddingTop: 12,
+                  borderTop: "1px solid var(--line)",
+                  gap: 6,
+                  flexWrap: "wrap",
+                }}
+              >
+                <button
+                  type="button"
+                  className="btn btn-sm btn-primary"
+                  onClick={onOpenRoute}
+                  style={{ flex: 1, justifyContent: "center" }}
+                >
+                  <Icon name="send" size={12} className="" />
+                  Route to department
+                </button>
+              </div>
+              {routingHistory.length > 0 && (
+                <div
+                  style={{
+                    marginTop: 12,
+                    paddingTop: 10,
+                    borderTop: "1px solid var(--line)",
+                  }}
+                >
+                  <div
+                    className="small muted"
+                    style={{
+                      fontSize: 10.5,
+                      fontWeight: 600,
+                      letterSpacing: "0.04em",
+                      textTransform: "uppercase",
+                      marginBottom: 6,
+                    }}
+                  >
+                    Routing history
+                  </div>
+                  {routingHistory.slice(0, 3).map((h) => (
+                    <div
+                      key={h.id}
+                      style={{
+                        fontSize: 11.5,
+                        color: "var(--ink-2)",
+                        marginBottom: 6,
+                      }}
+                    >
+                      <div style={{ fontWeight: 500, color: "var(--ink)" }}>
+                        {h.department}
+                      </div>
+                      <div className="small muted" style={{ fontSize: 10.5 }}>
+                        → {h.recipient_email} ·{" "}
+                        <span
+                          className={`pill ${
+                            h.delivery_status === "sent"
+                              ? "pill-good"
+                              : h.delivery_status === "failed"
+                              ? "pill-bad"
+                              : ""
+                          }`}
+                          style={{ fontSize: 9.5, padding: "1px 6px" }}
+                        >
+                          {h.delivery_status}
+                        </span>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
             </div>
           </div>
 
@@ -733,5 +992,212 @@ function TicketDetail({
         </div>
       </div>
     </>
+  );
+}
+
+/* ─────────────────────────────────────────────────────────────
+   RouteModal — forward the ticket to a department by email
+   ───────────────────────────────────────────────────────────── */
+
+function RouteModal({ ticket, departments, busy, onClose, onSubmit, currentUser }) {
+  // Default to the AI-suggested route if it matches a known department.
+  const initialDept = useMemo(() => {
+    if (!departments?.length) return null;
+    const match = departments.find(
+      (d) => d.name.toLowerCase() === (ticket.route || "").toLowerCase()
+    );
+    return match || departments[0];
+  }, [ticket.route, departments]);
+
+  const [deptName, setDeptName] = useState(initialDept?.name || "");
+  const [recipient, setRecipient] = useState(initialDept?.email || "");
+  const [subject, setSubject] = useState(
+    `[${ticket.id}] ${ticket.subject || "Routed ticket"}`
+  );
+  const [message, setMessage] = useState(
+    [
+      `Hi ${deptName || "team"},`,
+      "",
+      `Forwarding ticket ${ticket.id} for your review and ownership.`,
+      "",
+      `Recommended action: ${ticket.recommended_action || "—"}`,
+      "",
+      `Thanks,`,
+      currentUser?.name || "ResolveAI",
+    ].join("\n")
+  );
+  const [cc, setCc] = useState("");
+  const [touchedSubject, setTouchedSubject] = useState(false);
+  const messageRef = useRef(null);
+
+  // When department changes, update the recipient default + greeting.
+  useEffect(() => {
+    const d = departments.find((x) => x.name === deptName);
+    if (d?.email) setRecipient(d.email);
+  }, [deptName, departments]);
+
+  function handleSubmit(e) {
+    e.preventDefault();
+    if (!deptName || !recipient || !message.trim()) return;
+    const payload = {
+      department: deptName,
+      recipient_email: recipient.trim(),
+      subject: subject.trim() || undefined,
+      message: message.trim(),
+      cc: cc
+        .split(",")
+        .map((s) => s.trim())
+        .filter(Boolean),
+      mark_escalated: true,
+    };
+    onSubmit(payload);
+  }
+
+  return (
+    <div
+      className="route-modal-overlay"
+      role="dialog"
+      aria-modal="true"
+      aria-label="Route ticket to a department"
+      onClick={(e) => {
+        if (e.target.classList.contains("route-modal-overlay")) onClose();
+      }}
+    >
+      <form className="route-modal" onSubmit={handleSubmit}>
+        <div className="route-modal-head">
+          <div>
+            <div className="route-modal-title">Route to a department</div>
+            <div className="small muted">
+              Forward <span className="mono">{ticket.id}</span> via email — the
+              full ticket context is included automatically.
+            </div>
+          </div>
+          <button
+            type="button"
+            className="btn btn-ghost btn-icon"
+            onClick={onClose}
+            aria-label="Close"
+          >
+            <Icon name="x" size={14} className="" />
+          </button>
+        </div>
+
+        <div className="route-modal-body">
+          <div className="route-field">
+            <label className="route-label">Department</label>
+            <div className="route-dept-grid">
+              {departments.map((d) => {
+                const on = d.name === deptName;
+                return (
+                  <button
+                    key={d.name}
+                    type="button"
+                    className={`route-dept ${on ? "on" : ""}`}
+                    onClick={() => setDeptName(d.name)}
+                  >
+                    <div className="route-dept-name">{d.name}</div>
+                    <div className="route-dept-email">{d.email}</div>
+                    {d.intents?.length > 0 && (
+                      <div className="route-dept-intents">
+                        {d.intents.slice(0, 2).join(" · ")}
+                        {d.intents.length > 2 ? ` +${d.intents.length - 2}` : ""}
+                      </div>
+                    )}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+
+          <div className="route-field">
+            <label className="route-label" htmlFor="route-recipient">
+              Recipient
+            </label>
+            <input
+              id="route-recipient"
+              className="text-input"
+              type="email"
+              value={recipient}
+              onChange={(e) => setRecipient(e.target.value)}
+              placeholder="team@yourcompany.com"
+              required
+            />
+          </div>
+
+          <div className="route-field">
+            <label className="route-label" htmlFor="route-cc">
+              Cc <span className="muted small">(optional, comma-separated)</span>
+            </label>
+            <input
+              id="route-cc"
+              className="text-input"
+              type="text"
+              value={cc}
+              onChange={(e) => setCc(e.target.value)}
+              placeholder="manager@example.com, lead@example.com"
+            />
+          </div>
+
+          <div className="route-field">
+            <label className="route-label" htmlFor="route-subject">
+              Subject
+            </label>
+            <input
+              id="route-subject"
+              className="text-input"
+              type="text"
+              value={subject}
+              onChange={(e) => {
+                setSubject(e.target.value);
+                setTouchedSubject(true);
+              }}
+            />
+          </div>
+
+          <div className="route-field">
+            <label className="route-label" htmlFor="route-message">
+              Message
+            </label>
+            <textarea
+              id="route-message"
+              ref={messageRef}
+              className="field"
+              style={{ minHeight: 160, fontFamily: "inherit" }}
+              value={message}
+              onChange={(e) => setMessage(e.target.value)}
+              required
+            />
+            <div className="small muted" style={{ marginTop: 6 }}>
+              The original message, ticket metadata, and your signature are
+              appended automatically.
+            </div>
+          </div>
+        </div>
+
+        <div className="route-modal-foot">
+          <span className="small muted">
+            The ticket will be marked <strong>Escalated</strong> after sending.
+          </span>
+          <div className="row" style={{ gap: 8, marginLeft: "auto" }}>
+            <button
+              type="button"
+              className="btn btn-sm"
+              onClick={onClose}
+              disabled={busy}
+            >
+              Cancel
+            </button>
+            <button
+              type="submit"
+              className="btn btn-sm btn-primary"
+              disabled={busy || !deptName || !recipient || !message.trim()}
+            >
+              <Icon name="send" size={12} className="" />
+              {busy ? "Sending…" : "Send & route"}
+            </button>
+          </div>
+        </div>
+      </form>
+    </div>
   );
 }
