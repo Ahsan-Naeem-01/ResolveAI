@@ -125,6 +125,13 @@ def list_tickets(
             "for tickets with no assignee, or a numeric user id."
         ),
     ),
+    has_draft: Optional[bool] = Query(
+        None,
+        description=(
+            "If true, only return tickets that have an unsent reply edited by "
+            "an agent (a draft in progress)."
+        ),
+    ),
     limit: int = Query(50, le=200),
     db: Session = Depends(get_db),
     user: User = Depends(require_staff),
@@ -146,6 +153,13 @@ def list_tickets(
                 query = query.filter(Ticket.assignee_id == int(assignee))
             except ValueError:
                 raise HTTPException(400, "assignee must be 'me', 'unassigned', or a user id")
+    if has_draft:
+        draft_ticket_ids = (
+            db.query(Reply.ticket_id)
+            .filter(Reply.sent == False, Reply.edited_by_agent == True)  # noqa: E712
+            .distinct()
+        )
+        query = query.filter(Ticket.id.in_(draft_ticket_ids))
     if q:
         like = f"%{q}%"
         query = query.filter((Ticket.subject.ilike(like)) | (Ticket.body.ilike(like)) | (Ticket.code.ilike(like)))

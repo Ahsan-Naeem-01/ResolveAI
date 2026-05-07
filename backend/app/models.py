@@ -80,6 +80,9 @@ class Ticket(Base):
             "assignee_id": self.assignee_id,
             "assignee_name": self.assignee.name if self.assignee else None,
             "assignee_initials": self.assignee.initials if self.assignee else None,
+            "has_draft": any(
+                (not r.sent) and r.edited_by_agent for r in (self.replies or [])
+            ),
         }
 
 

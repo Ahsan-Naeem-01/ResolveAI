@@ -18,7 +18,7 @@ const FILTERS = [
 // Filters are merged with the chip-bar filter (urgency/needs-review).
 const NAV_FILTERS = {
   inbox: {},
-  mine: { assignee: "me" },
+  drafts: { has_draft: true },
   watch: { assignee: "unassigned" },
   review: { status: "needs-review" },
   resolved: { status: "resolved" },
@@ -27,7 +27,7 @@ const NAV_FILTERS = {
 
 const NAV_TITLES = {
   inbox: { crumb: "Tickets", title: "Inbox" },
-  mine: { crumb: "Tickets", title: "Assigned to me" },
+  drafts: { crumb: "Tickets", title: "Drafts" },
   watch: { crumb: "Tickets", title: "Unassigned (watching)" },
   review: { crumb: "Tickets", title: "Needs review" },
   resolved: { crumb: "Tickets", title: "Auto-resolved" },
@@ -185,6 +185,7 @@ export default function AgentScreen({ toast, currentUser, ...shellProps }) {
     try {
       await api.updateReply(detail.id, replyText, true);
       toast?.("Draft saved");
+      await refreshList();
     } catch (e) {
       setError(e.message);
     }
@@ -515,6 +516,14 @@ function TicketList({
                   <span className="pill-dot" /> {t.urgency}
                 </span>
                 <span className="pill">{t.intent}</span>
+                {t.has_draft && (
+                  <span
+                    className="pill pill-warn"
+                    title="You have an unsent draft on this ticket"
+                  >
+                    <Icon name="edit" size={9} className="" /> Draft
+                  </span>
+                )}
                 {mine && (
                   <span
                     className="pill pill-accent"

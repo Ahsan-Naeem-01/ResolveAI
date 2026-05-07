@@ -13,7 +13,7 @@ export const ROLES = [
         label: "Queue",
         items: [
           { id: "inbox", icon: "inbox", name: "All tickets" },
-          { id: "mine", icon: "users", name: "Assigned to me" },
+          { id: "drafts", icon: "edit", name: "Drafts" },
           { id: "watch", icon: "flag", name: "Watching" },
         ],
       },

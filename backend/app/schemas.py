@@ -69,6 +69,7 @@ class TicketOut(BaseModel):
     assignee_id: Optional[int] = None
     assignee_name: Optional[str] = None
     assignee_initials: Optional[str] = None
+    has_draft: bool = False
 
 
 class TicketDetailOut(TicketOut):
