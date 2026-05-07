@@ -294,9 +294,9 @@ export default function AgentScreen({ toast, currentUser, ...shellProps }) {
                     type="button"
                     className="btn btn-ghost btn-sm agent-back-btn"
                     onClick={() => setShowDetailMobile(false)}
+                    aria-label="Back to ticket list"
                   >
-                    <Icon name="arrowRight" size={12} className="" />
-                    <span style={{ transform: "scaleX(-1)", display: "inline-block" }}>
+                    <span aria-hidden="true" style={{ fontSize: 14, lineHeight: 1 }}>
                       ←
                     </span>
                     Back
@@ -599,7 +599,7 @@ function TicketDetail({
 
   return (
     <>
-      <div className="card">
+      <div className="card agent-ticket-summary">
         <div className="card-header agent-detail-head">
           <div
             className="avatar lg"
@@ -658,20 +658,10 @@ function TicketDetail({
             )}
           </div>
         </div>
-        <div className="card-body" style={{ paddingBottom: 0 }}>
-          <div
-            style={{
-              fontSize: 16,
-              fontWeight: 600,
-              letterSpacing: "-0.015em",
-              marginBottom: 4,
-              color: "var(--ink)",
-            }}
-          >
-            {ticket.subject}
-          </div>
+        <div className="card-body agent-ticket-summary-body">
+          <div className="agent-subject">{ticket.subject}</div>
           {ticket.attachments && ticket.attachments.length > 0 && (
-            <div className="row" style={{ marginTop: 10, marginBottom: 4, gap: 10 }}>
+            <div className="row" style={{ marginTop: 10, gap: 10 }}>
               <div className="upload-thumb" style={{ width: 36, height: 36 }}>
                 <Icon name="paperclip" size={14} className="" />
               </div>
@@ -687,7 +677,16 @@ function TicketDetail({
             </div>
           )}
         </div>
-        <div style={{ borderTop: "1px solid var(--line)", marginTop: 4 }}>
+      </div>
+
+      <div className="agent-work-main">
+        <div className="card agent-chat-card">
+          <div className="card-header agent-chat-head">
+            <Icon name="chat" size={13} className="" />
+            <div className="card-title" style={{ fontSize: 13 }}>
+              Conversation
+            </div>
+          </div>
           <ChatPanel
             code={ticket.id}
             currentUserId={myUserId}
@@ -696,10 +695,8 @@ function TicketDetail({
             className="chat-panel-embedded"
           />
         </div>
-      </div>
 
-      <div className="agent-reply-grid">
-        <div className="card">
+        <div className="card agent-reply-card">
           <div className="card-header agent-reply-head">
             <Icon name="sparkles" size={14} className="" />
             <div className="card-title">AI suggested reply</div>
@@ -800,15 +797,16 @@ function TicketDetail({
             </div>
           </div>
         </div>
+      </div>
 
-        <div className="col agent-side-rail" style={{ gap: 14 }}>
-          <div className="card">
-            <div className="card-header" style={{ padding: "12px 14px" }}>
-              <Icon name="layers" size={13} className="" />
-              <div className="card-title" style={{ fontSize: 13 }}>
-                Extracted
-              </div>
+      <div className="agent-side-rail">
+        <div className="card">
+          <div className="card-header" style={{ padding: "12px 14px" }}>
+            <Icon name="layers" size={13} className="" />
+            <div className="card-title" style={{ fontSize: 13 }}>
+              Extracted
             </div>
+          </div>
             <div className="card-body" style={{ padding: 14 }}>
               <div className="meta-list" style={{ fontSize: 12 }}>
                 <span className="meta-key">Intent</span>
@@ -1010,7 +1008,6 @@ function TicketDetail({
               </div>
             </div>
           )}
-        </div>
       </div>
     </>
   );

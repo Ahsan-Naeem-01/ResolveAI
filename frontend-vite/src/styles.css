@@ -1180,11 +1180,11 @@ body {
 }
 
 /* ─────────────────────────────────────────────────────────────
-   Agent screen — responsive list/detail grid + reply layout
+   Agent screen — responsive list/detail layout
    ───────────────────────────────────────────────────────────── */
 .agent-grid {
   display: grid;
-  grid-template-columns: 380px 1fr;
+  grid-template-columns: minmax(300px, 360px) minmax(0, 1fr);
   gap: 16px;
   min-height: 0;
   overflow: hidden;
@@ -1198,15 +1198,12 @@ body {
 .agent-detail-pane {
   display: flex;
   flex-direction: column;
-  gap: 16px;
+  gap: 14px;
   min-height: 0;
+  min-width: 0;
   overflow: auto;
   padding-right: 2px;
-}
-.agent-reply-grid {
-  display: grid;
-  grid-template-columns: 1fr 360px;
-  gap: 16px;
+  scrollbar-gutter: stable;
 }
 .agent-header-actions {
   display: flex;
@@ -1216,38 +1213,174 @@ body {
 }
 .agent-back-btn {
   display: none;
+  align-items: center;
+  gap: 4px;
 }
 
-/* Tablet — narrow the side rail, fold the right rail under the reply */
+/* Ticket list polish */
+.agent-ticket-list .ticket-row {
+  transition: background 0.12s ease, border-left-color 0.12s ease;
+}
+.agent-ticket-list .ticket-row:hover {
+  background: var(--bg-soft);
+}
+.agent-filter-bar {
+  background: var(--bg);
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  border-bottom: 1px solid var(--line);
+}
+
+/* ── Compact ticket-summary card ─────────────────────── */
+.agent-ticket-summary .card-header {
+  padding: 10px 14px;
+}
+.agent-ticket-summary-body {
+  padding: 8px 16px 12px !important;
+}
+.agent-subject {
+  font-size: 15px;
+  font-weight: 600;
+  letter-spacing: -0.015em;
+  color: var(--ink);
+  line-height: 1.4;
+}
+.agent-detail-head {
+  gap: 10px;
+  align-items: center;
+}
+.agent-detail-customer {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+.agent-detail-customer > div:first-child {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.agent-detail-actions {
+  flex-shrink: 0;
+}
+
+/* ── Work area: chat + reply side-by-side ───────────── */
+.agent-work-main {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: 14px;
+  align-items: stretch;
+}
+.agent-work-main > .card {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  margin: 0;
+}
+
+/* Chat card — fills column, internal scroll on the thread */
+.agent-chat-card {
+  overflow: hidden;
+}
+.agent-chat-head {
+  padding: 10px 14px;
+  border-bottom: 1px solid var(--line);
+}
+.agent-chat-card .chat-panel {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+.agent-chat-card .chat-thread {
+  flex: 1;
+  min-height: 240px;
+  max-height: clamp(280px, 52vh, 540px);
+}
+.chat-panel-embedded .chat-composer {
+  flex-wrap: wrap;
+}
+
+/* Reply card */
+.agent-reply-card .card-body {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+}
+.agent-reply-card textarea.field {
+  flex: 1;
+  min-height: 200px;
+}
+.agent-reply-head {
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.agent-reply-actions {
+  align-items: center;
+}
+
+/* Side rail — own row below the work area */
+.agent-side-rail {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+  gap: 14px;
+}
+.agent-side-rail .card {
+  margin: 0;
+}
+
+/* ── Wide desktop (≥1440) — keep defaults ───────────── */
+
+/* ── Standard laptop / 1280–1440 ────────────────────── */
+@media (max-width: 1440px) {
+  .agent-grid {
+    grid-template-columns: 320px minmax(0, 1fr);
+  }
+}
+
+/* ── Narrow laptop / 1120–1280 ──────────────────────── */
 @media (max-width: 1280px) {
   .agent-grid {
-    grid-template-columns: 320px 1fr;
+    grid-template-columns: 280px minmax(0, 1fr);
+    gap: 14px;
   }
-  .agent-reply-grid {
-    grid-template-columns: 1fr 320px;
-  }
-}
-@media (max-width: 1080px) {
-  .agent-grid {
-    grid-template-columns: 280px 1fr;
-  }
-  .agent-reply-grid {
-    grid-template-columns: 1fr;
-  }
-  .agent-side-rail {
-    flex-direction: row;
-    flex-wrap: wrap;
-  }
-  .agent-side-rail > * {
-    flex: 1 1 280px;
-    min-width: 0;
+  .agent-chat-card .chat-thread {
+    max-height: clamp(260px, 48vh, 460px);
   }
 }
 
-/* Phone — switch to single-column (list OR detail), with a back button */
+/* ── Compact laptop — chat + reply still side-by-side
+      until they would get truly cramped ─────────────── */
+@media (max-width: 1080px) {
+  .agent-grid {
+    grid-template-columns: 260px minmax(0, 1fr);
+  }
+}
+
+/* ── Small tablet — stack chat above reply so each is
+      readable at narrow widths ───────────────────────── */
+@media (max-width: 960px) {
+  .agent-grid {
+    grid-template-columns: 240px minmax(0, 1fr);
+    gap: 12px;
+  }
+  .agent-work-main {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .agent-chat-card .chat-thread {
+    max-height: clamp(240px, 44vh, 420px);
+  }
+  .agent-reply-card textarea.field {
+    min-height: 160px;
+  }
+}
+
+/* ── Phone — switch to single-column (list OR detail) ── */
 @media (max-width: 800px) {
   .agent-grid {
-    grid-template-columns: 1fr;
+    grid-template-columns: minmax(0, 1fr);
+    gap: 0;
+    overflow: visible;
   }
   .agent-list-pane,
   .agent-detail-pane {
@@ -1258,28 +1391,32 @@ body {
   }
   .agent-grid.show-detail .agent-detail-pane {
     display: flex;
+    overflow: visible;
+    padding-right: 0;
   }
   .agent-back-btn {
     display: inline-flex;
   }
-  .agent-side-rail > * {
-    flex: 1 1 100%;
+  .agent-side-rail {
+    grid-template-columns: 1fr;
   }
   .agent-detail-head {
     flex-wrap: wrap;
     gap: 8px;
+    padding: 12px 14px;
   }
   .agent-detail-customer {
     flex: 1 1 60%;
-    min-width: 0;
   }
   .agent-detail-actions {
     flex-basis: 100%;
     margin-left: 0 !important;
+    justify-content: flex-start;
   }
   .agent-reply-head {
     flex-wrap: wrap;
     gap: 6px;
+    padding: 12px 14px;
   }
   .agent-reply-actions {
     gap: 6px;
@@ -1289,18 +1426,48 @@ body {
     margin-left: 0 !important;
     text-align: left;
   }
+  .agent-chat-card .chat-thread {
+    max-height: clamp(220px, 50vh, 420px);
+  }
 }
 
-/* Tighter ticket-row touch target on small screens */
+/* ── Phone narrow / ≤560 ────────────────────────────── */
 @media (max-width: 560px) {
   .ticket-row {
     padding: 10px 12px !important;
   }
   .agent-filter-bar {
     padding: 8px 10px !important;
+    gap: 4px !important;
+  }
+  .agent-filter-bar .btn {
+    flex: 1 1 auto;
+    min-width: 0;
+    padding-left: 10px;
+    padding-right: 10px;
+  }
+  .agent-detail-pane {
+    gap: 10px;
   }
   .agent-detail-head {
     padding: 10px 12px;
+  }
+  .agent-chat-card .chat-thread {
+    min-height: 200px;
+    max-height: clamp(220px, 56vh, 380px);
+  }
+  .agent-reply-card textarea.field {
+    min-height: 140px;
+  }
+  .agent-reply-actions .btn {
+    flex: 1 1 auto;
+    justify-content: center;
+  }
+  .agent-reply-actions .agent-reply-status {
+    flex-basis: 100%;
+    flex: 1 1 100%;
+    text-align: center;
+    order: 99;
   }
 }
 
