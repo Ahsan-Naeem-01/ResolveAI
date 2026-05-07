@@ -72,6 +72,25 @@ export default function AgentScreen({ toast, currentUser, ...shellProps }) {
       .catch(() => {});
   }, []);
 
+  // Hook into the global ⌘K palette: when a ticket / KB article is selected,
+  // surface it in the right pane instead of just emitting an event into the void.
+  useEffect(() => {
+    const handler = (e) => {
+      const entry = e.detail;
+      if (!entry) return;
+      if (entry.kind === "ticket") {
+        setActiveNavId("inbox");
+        setFilter("All");
+        setActiveCode(entry.item.id);
+        setShowDetailMobile(true);
+      } else if (entry.kind === "kb") {
+        setActiveNavId("kb");
+      }
+    };
+    window.addEventListener("resolveai:navigate", handler);
+    return () => window.removeEventListener("resolveai:navigate", handler);
+  }, []);
+
   function insertIntoReply(text) {
     const sep = replyText && !replyText.endsWith("\n") ? "\n\n" : "";
     setReplyText((prev) => `${prev}${sep}${text}`);

@@ -1,5 +1,6 @@
 import { Fragment, useEffect, useRef, useState } from "react";
 import Icon from "./Icon.jsx";
+import SearchPalette from "./SearchPalette.jsx";
 
 /* AppShell — persistent staff layout (sidebar + header).
    Used by Agent / Manager / Admin screens. The Customer surface uses a
@@ -124,6 +125,22 @@ function MenuIcon() {
 }
 
 export function Header({ crumb, title, actions, hasSearch = true }) {
+  const [searchOpen, setSearchOpen] = useState(false);
+
+  useEffect(() => {
+    if (!hasSearch) return;
+    const onKey = (e) => {
+      const isMac = navigator.platform.toLowerCase().includes("mac");
+      const mod = isMac ? e.metaKey : e.ctrlKey;
+      if (mod && e.key.toLowerCase() === "k") {
+        e.preventDefault();
+        setSearchOpen((v) => !v);
+      }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [hasSearch]);
+
   return (
     <header className="header">
       <h1 className="header-title">
@@ -131,14 +148,22 @@ export function Header({ crumb, title, actions, hasSearch = true }) {
       </h1>
       <div className="header-actions">
         {hasSearch && (
-          <div className="header-search">
+          <button
+            type="button"
+            className="header-search"
+            onClick={() => setSearchOpen(true)}
+            aria-label="Open search"
+          >
             <Icon name="search" size={13} className="" />
             <span>Search tickets, customers…</span>
             <kbd>⌘K</kbd>
-          </div>
+          </button>
         )}
         {actions}
       </div>
+      {hasSearch && (
+        <SearchPalette open={searchOpen} onClose={() => setSearchOpen(false)} />
+      )}
     </header>
   );
 }
