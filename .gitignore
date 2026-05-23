@@ -1,0 +1,30 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+.pytest_cache/
+
+# Node / Vite
+node_modules/
+dist/
+.vite/
+
+# DB & ML artifacts
+*.db
+*.joblib
+backend/app/nlp/_intent_model.joblib
+
+# Secrets / local config
+.env
+.env.local
+backend/.env
+
+# Editor / OS
+.idea/
+.vscode/
+.DS_Store
+Thumbs.db
+
+
