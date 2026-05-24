@@ -71,6 +71,7 @@ class Ticket(Base):
             "sentiment": self.sentiment,
             "channel": self.channel,
             "age": _humanize_age(self.created_at),
+            "created_at": self.created_at,
             "confidence": self.intent_confidence,
             "route": self.route,
             "status": self.status,

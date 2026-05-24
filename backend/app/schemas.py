@@ -60,6 +60,7 @@ class TicketOut(BaseModel):
     sentiment: Optional[str]
     channel: str
     age: str
+    created_at: Optional[datetime] = None
     confidence: Optional[float]
     route: Optional[str]
     status: str
