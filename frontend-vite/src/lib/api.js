@@ -90,6 +90,7 @@ export const api = {
   myTickets: () => request("/api/tickets/customer/me"),
 
   managerDashboard: () => request("/api/analytics/manager"),
+  shiftsCoverage: () => request("/api/analytics/shifts"),
   adminDashboard: () => request("/api/analytics/admin"),
   listAgents: () => request("/api/agents"),
   me: () => request("/api/agents/me"),

@@ -313,6 +313,20 @@ body {
   color: var(--ink-2);
 }
 
+/* ── Shift schedule grid ───────────────────────────────── */
+.tbl.shift-grid td.shift-cell {
+  padding: 8px 10px;
+  text-align: center;
+  font-variant-numeric: tabular-nums;
+}
+.tbl.shift-grid td.shift-cell .pill {
+  font-size: 11px;
+  padding: 2px 8px;
+}
+.tbl.shift-grid td.shift-cell-off {
+  color: var(--ink-3);
+}
+
 /* ── Form bits ─────────────────────────────────────────── */
 .field {
   background: var(--bg);
