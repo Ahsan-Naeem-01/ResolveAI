@@ -30,6 +30,8 @@ export default function ManagerScreen(shellProps) {
     body = <LiveQueueView />;
   } else if (activeNavId === "perf") {
     body = <TeamPerformanceView />;
+  } else if (activeNavId === "agents") {
+    body = <AgentsView />;
   } else {
     const meta = NAV_TITLES[activeNavId] || NAV_TITLES.perf;
     body = <ComingSoonView title={meta.title} />;
@@ -701,6 +703,544 @@ function formatClock(d) {
   const m = d.getMinutes().toString().padStart(2, "0");
   const s = d.getSeconds().toString().padStart(2, "0");
   return `${h}:${m}:${s}`;
+}
+
+/* ─────────────────────────────────────────────────────────────
+   Agents — team roster with workload, performance, drill-down.
+   Combines /analytics/manager (per-agent KPIs) with /agents (IDs)
+   and live open tickets (current workload + assignment list).
+   ───────────────────────────────────────────────────────────── */
+
+const AGENT_STATUS_FILTERS = [
+  { id: "all", label: "All" },
+  { id: "online", label: "Online" },
+  { id: "break", label: "On break" },
+  { id: "offline", label: "Offline" },
+];
+
+const STATUS_PILL = {
+  online: "pill pill-good",
+  break: "pill pill-warn",
+  offline: "pill",
+};
+
+function AgentsView() {
+  const [dashboard, setDashboard] = useState(null);
+  const [agents, setAgents] = useState([]);
+  const [openTickets, setOpenTickets] = useState([]);
+  const [error, setError] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [statusFilter, setStatusFilter] = useState("all");
+  const [search, setSearch] = useState("");
+  const [selectedId, setSelectedId] = useState(null);
+  const [busyCode, setBusyCode] = useState(null);
+
+  const refresh = useCallback(async () => {
+    try {
+      const [dash, ags, ...lists] = await Promise.all([
+        api.managerDashboard(),
+        api.listAgents(),
+        ...OPEN_STATUSES.map((s) => api.listTickets({ status: s, limit: 200 })),
+      ]);
+      setDashboard(dash);
+      setAgents(ags);
+      const merged = lists.flat();
+      const seen = new Set();
+      const unique = [];
+      for (const t of merged) {
+        if (seen.has(t.id)) continue;
+        seen.add(t.id);
+        unique.push(t);
+      }
+      setOpenTickets(unique);
+      setError(null);
+    } catch (e) {
+      setError(e.message);
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    refresh();
+  }, [refresh]);
+
+  // Stitch dashboard KPIs (keyed by name) onto the real agent records
+  // and attach the agent's currently-open tickets.
+  const enriched = useMemo(() => {
+    const statsByName = new Map(
+      (dashboard?.agents || []).map((a) => [a.name, a])
+    );
+    const ticketsByAgent = new Map();
+    for (const t of openTickets) {
+      if (t.assignee_id == null) continue;
+      if (!ticketsByAgent.has(t.assignee_id)) ticketsByAgent.set(t.assignee_id, []);
+      ticketsByAgent.get(t.assignee_id).push(t);
+    }
+    return agents.map((a) => {
+      const s = statsByName.get(a.name) || {};
+      const open = ticketsByAgent.get(a.id) || [];
+      return {
+        ...a,
+        handled: s.handled ?? 0,
+        ahtMin: s.ahtMin ?? 0,
+        csat: s.csat ?? 0,
+        ai: s.ai ?? 0,
+        status: s.status || "offline",
+        open,
+        openCount: open.length,
+        breachCount: open.filter((t) => {
+          const window = SLA_SECONDS[t.urgency] ?? SLA_SECONDS.Medium;
+          const createdMs = t.created_at ? Date.parse(t.created_at) : Date.now();
+          return (Date.now() - createdMs) / 1000 > window;
+        }).length,
+      };
+    });
+  }, [agents, dashboard, openTickets]);
+
+  const filtered = useMemo(() => {
+    const q = search.trim().toLowerCase();
+    return enriched.filter((a) => {
+      if (statusFilter !== "all" && a.status !== statusFilter) return false;
+      if (!q) return true;
+      return (
+        a.name.toLowerCase().includes(q) ||
+        a.email.toLowerCase().includes(q) ||
+        (a.title || "").toLowerCase().includes(q)
+      );
+    });
+  }, [enriched, statusFilter, search]);
+
+  const unassignedCount = useMemo(
+    () => openTickets.filter((t) => !t.assignee_id).length,
+    [openTickets]
+  );
+  const totalAssigned = useMemo(
+    () => openTickets.filter((t) => t.assignee_id != null).length,
+    [openTickets]
+  );
+  const onlineCount = enriched.filter((a) => a.status === "online").length;
+  const avgLoad = enriched.length
+    ? (totalAssigned / enriched.length).toFixed(1)
+    : "0.0";
+  const maxLoad = Math.max(1, ...enriched.map((a) => a.openCount));
+
+  const selected = enriched.find((a) => a.id === selectedId) || null;
+
+  async function reassign(code, assigneeId) {
+    setBusyCode(code);
+    try {
+      await api.assignTicket(code, { assigneeId });
+      await refresh();
+    } catch (e) {
+      setError(e.message);
+    } finally {
+      setBusyCode(null);
+    }
+  }
+
+  return (
+    <>
+      <Header
+        crumb="Team"
+        title="Agents"
+        actions={
+          <button
+            className="btn btn-sm"
+            onClick={refresh}
+            disabled={loading}
+            title="Refresh"
+          >
+            <Icon name="refresh" size={12} className="" /> Refresh
+          </button>
+        }
+      />
+      <div className="content">
+        <div className="content-narrow">
+          {error && <div className="error-banner">{error}</div>}
+
+          {/* KPI strip */}
+          {loading && !dashboard ? (
+            <SkeletonKpiRow cols={4} />
+          ) : (
+            <div
+              style={{
+                display: "grid",
+                gridTemplateColumns: "repeat(4, 1fr)",
+                gap: 14,
+                marginBottom: 18,
+              }}
+            >
+              <SimpleKpi label="Team size" value={enriched.length} />
+              <SimpleKpi
+                label="Online now"
+                value={`${onlineCount} / ${enriched.length}`}
+              />
+              <SimpleKpi label="Open assignments" value={totalAssigned} />
+              <SimpleKpi
+                label="Unassigned"
+                value={unassignedCount}
+                tone={unassignedCount > 0 ? "warn" : "good"}
+              />
+            </div>
+          )}
+
+          {/* Filter + search row */}
+          <div
+            className="row"
+            style={{
+              gap: 8,
+              marginBottom: 12,
+              flexWrap: "wrap",
+              alignItems: "center",
+            }}
+          >
+            {AGENT_STATUS_FILTERS.map((f) => {
+              const count =
+                f.id === "all"
+                  ? enriched.length
+                  : enriched.filter((a) => a.status === f.id).length;
+              return (
+                <button
+                  key={f.id}
+                  className={`btn btn-sm ${
+                    statusFilter === f.id ? "btn-primary" : "btn-ghost"
+                  }`}
+                  onClick={() => setStatusFilter(f.id)}
+                >
+                  {f.label}
+                  <span
+                    className="mono"
+                    style={{ marginLeft: 6, opacity: 0.75, fontSize: 11 }}
+                  >
+                    {count}
+                  </span>
+                </button>
+              );
+            })}
+            <div style={{ flex: 1 }} />
+            <input
+              className="text-input"
+              placeholder="Search by name, email, or title…"
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              style={{ maxWidth: 260, padding: "6px 10px", fontSize: 12 }}
+            />
+          </div>
+
+          {/* Agent grid */}
+          {loading && enriched.length === 0 ? (
+            <div
+              style={{
+                display: "grid",
+                gridTemplateColumns: "repeat(auto-fill, minmax(280px, 1fr))",
+                gap: 14,
+              }}
+            >
+              {Array.from({ length: 6 }).map((_, i) => (
+                <SkeletonCard key={i} height={170} />
+              ))}
+            </div>
+          ) : filtered.length === 0 ? (
+            <div className="card">
+              <div className="empty-state" style={{ height: 200 }}>
+                No agents match this filter.
+              </div>
+            </div>
+          ) : (
+            <div
+              style={{
+                display: "grid",
+                gridTemplateColumns: "repeat(auto-fill, minmax(280px, 1fr))",
+                gap: 14,
+                marginBottom: 18,
+              }}
+            >
+              {filtered.map((a) => (
+                <AgentCard
+                  key={a.id}
+                  agent={a}
+                  maxLoad={maxLoad}
+                  selected={a.id === selectedId}
+                  onSelect={() =>
+                    setSelectedId((cur) => (cur === a.id ? null : a.id))
+                  }
+                />
+              ))}
+            </div>
+          )}
+
+          {/* Detail panel — selected agent's open assignments */}
+          {selected && (
+            <AgentDetail
+              agent={selected}
+              agents={agents}
+              busyCode={busyCode}
+              onReassign={reassign}
+              onClose={() => setSelectedId(null)}
+            />
+          )}
+        </div>
+      </div>
+    </>
+  );
+}
+
+function SimpleKpi({ label, value, tone }) {
+  const toneClass =
+    tone === "warn"
+      ? "kpi-delta down"
+      : tone === "good"
+      ? "kpi-delta up"
+      : null;
+  return (
+    <div className="kpi">
+      <div className="kpi-label">{label}</div>
+      <div className="kpi-value">{value}</div>
+      {toneClass && (
+        <span className={toneClass} style={{ marginTop: 4 }}>
+          {tone === "warn" ? "Needs routing" : "All claimed"}
+        </span>
+      )}
+    </div>
+  );
+}
+
+function AgentCard({ agent, maxLoad, selected, onSelect }) {
+  const loadPct = Math.min(100, (agent.openCount / maxLoad) * 100);
+  const loadColor =
+    agent.openCount === 0
+      ? "var(--ink-3)"
+      : agent.breachCount > 0
+      ? "var(--bad)"
+      : agent.openCount >= maxLoad * 0.75
+      ? "var(--warn)"
+      : "var(--good)";
+
+  return (
+    <div
+      className="card"
+      onClick={onSelect}
+      style={{
+        padding: 14,
+        cursor: "pointer",
+        outline: selected ? "2px solid var(--accent)" : "none",
+        outlineOffset: -1,
+      }}
+    >
+      <div className="row" style={{ gap: 10, marginBottom: 10 }}>
+        <div className="avatar" style={{ width: 36, height: 36, fontSize: 12 }}>
+          {agent.initials}
+        </div>
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <div style={{ fontWeight: 500, color: "var(--ink)" }}>
+            {agent.name}
+          </div>
+          <div
+            className="small muted"
+            style={{
+              overflow: "hidden",
+              textOverflow: "ellipsis",
+              whiteSpace: "nowrap",
+            }}
+          >
+            {agent.title || agent.email}
+          </div>
+        </div>
+        <span className={STATUS_PILL[agent.status] || "pill"}>
+          <span className="pill-dot" /> {agent.status}
+        </span>
+      </div>
+
+      <div
+        style={{
+          display: "grid",
+          gridTemplateColumns: "repeat(3, 1fr)",
+          gap: 6,
+          marginBottom: 10,
+        }}
+      >
+        <MiniStat label="Handled" value={agent.handled} />
+        <MiniStat label="AHT" value={`${agent.ahtMin || 0}m`} />
+        <MiniStat
+          label="CSAT"
+          value={agent.csat ? Number(agent.csat).toFixed(1) : "—"}
+        />
+      </div>
+
+      <div style={{ marginBottom: 8 }}>
+        <div
+          className="row small muted"
+          style={{ justifyContent: "space-between", marginBottom: 4 }}
+        >
+          <span>AI assist</span>
+          <span className="mono">{Math.round((agent.ai || 0) * 100)}%</span>
+        </div>
+        <div className="cat-track">
+          <div
+            className="cat-fill"
+            style={{ width: `${(agent.ai || 0) * 100}%` }}
+          />
+        </div>
+      </div>
+
+      <div>
+        <div
+          className="row small muted"
+          style={{ justifyContent: "space-between", marginBottom: 4 }}
+        >
+          <span>Open workload</span>
+          <span className="mono" style={{ color: "var(--ink)" }}>
+            {agent.openCount}
+            {agent.breachCount > 0 && (
+              <span className="pill pill-bad" style={{ marginLeft: 6 }}>
+                {agent.breachCount} breach
+              </span>
+            )}
+          </span>
+        </div>
+        <div className="cat-track">
+          <div
+            className="cat-fill"
+            style={{ width: `${loadPct}%`, background: loadColor }}
+          />
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function MiniStat({ label, value }) {
+  return (
+    <div>
+      <div
+        className="small muted"
+        style={{ fontSize: 10, textTransform: "uppercase", letterSpacing: 0.3 }}
+      >
+        {label}
+      </div>
+      <div
+        className="mono"
+        style={{ fontSize: 14, fontWeight: 500, color: "var(--ink)" }}
+      >
+        {value}
+      </div>
+    </div>
+  );
+}
+
+function AgentDetail({ agent, agents, busyCode, onReassign, onClose }) {
+  const sorted = [...agent.open].sort((a, b) => {
+    const wa = SLA_SECONDS[a.urgency] ?? SLA_SECONDS.Medium;
+    const wb = SLA_SECONDS[b.urgency] ?? SLA_SECONDS.Medium;
+    const ra =
+      wa - (Date.now() - Date.parse(a.created_at || Date.now())) / 1000;
+    const rb =
+      wb - (Date.now() - Date.parse(b.created_at || Date.now())) / 1000;
+    return ra - rb;
+  });
+
+  return (
+    <div className="card">
+      <div className="card-header">
+        <div className="avatar" style={{ width: 28, height: 28, fontSize: 11 }}>
+          {agent.initials}
+        </div>
+        <div className="card-title">{agent.name}'s open tickets</div>
+        <span className="muted small" style={{ marginLeft: 8 }}>
+          {agent.openCount} open · {agent.breachCount} breaching
+        </span>
+        <button
+          className="btn btn-ghost btn-sm"
+          style={{ marginLeft: "auto" }}
+          onClick={onClose}
+        >
+          <Icon name="x" size={12} className="" /> Close
+        </button>
+      </div>
+      {sorted.length === 0 ? (
+        <div className="empty-state" style={{ height: 140 }}>
+          {agent.name} has no open tickets right now.
+        </div>
+      ) : (
+        <div style={{ overflowX: "auto" }}>
+          <table className="tbl">
+            <thead>
+              <tr>
+                <th>Ticket</th>
+                <th>Urgency</th>
+                <th>Status</th>
+                <th style={{ textAlign: "right" }}>Age</th>
+                <th>Reassign to</th>
+              </tr>
+            </thead>
+            <tbody>
+              {sorted.map((t) => (
+                <tr key={t.id}>
+                  <td>
+                    <div className="row" style={{ gap: 6 }}>
+                      <span className="mono small muted">{t.id}</span>
+                      <span style={{ fontWeight: 500, color: "var(--ink)" }}>
+                        {t.customer}
+                      </span>
+                    </div>
+                    <div
+                      className="small"
+                      style={{
+                        color: "var(--ink-2)",
+                        maxWidth: 360,
+                        overflow: "hidden",
+                        textOverflow: "ellipsis",
+                        whiteSpace: "nowrap",
+                      }}
+                    >
+                      {t.subject}
+                    </div>
+                  </td>
+                  <td>
+                    <span className={URGENCY_CLASS[t.urgency] || "pill"}>
+                      <span className="pill-dot" /> {t.urgency || "—"}
+                    </span>
+                  </td>
+                  <td>
+                    <span className={STATUS_CLASS[t.status] || "pill"}>
+                      {STATUS_LABEL[t.status] || t.status}
+                    </span>
+                  </td>
+                  <td className="mono" style={{ textAlign: "right" }}>
+                    {t.age}
+                  </td>
+                  <td>
+                    <select
+                      className="text-input"
+                      style={{
+                        padding: "4px 6px",
+                        fontSize: 12,
+                        maxWidth: 180,
+                      }}
+                      value={t.assignee_id ?? ""}
+                      disabled={busyCode === t.id}
+                      onChange={(e) => {
+                        const v = e.target.value;
+                        onReassign(t.id, v === "" ? null : Number(v));
+                      }}
+                    >
+                      <option value="">— Unassigned —</option>
+                      {agents.map((a) => (
+                        <option key={a.id} value={a.id}>
+                          {a.name}
+                        </option>
+                      ))}
+                    </select>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </div>
+  );
 }
 
 /* ─────────────────────────────────────────────────────────────
