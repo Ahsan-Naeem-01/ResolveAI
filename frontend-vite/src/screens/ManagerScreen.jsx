@@ -30,6 +30,8 @@ export default function ManagerScreen(shellProps) {
     body = <LiveQueueView />;
   } else if (activeNavId === "perf") {
     body = <TeamPerformanceView />;
+  } else if (activeNavId === "shifts") {
+    body = <ShiftsCoverageView />;
   } else {
     const meta = NAV_TITLES[activeNavId] || NAV_TITLES.perf;
     body = <ComingSoonView title={meta.title} />;
@@ -701,6 +703,410 @@ function formatClock(d) {
   const m = d.getMinutes().toString().padStart(2, "0");
   const s = d.getSeconds().toString().padStart(2, "0");
   return `${h}:${m}:${s}`;
+}
+
+/* ─────────────────────────────────────────────────────────────
+   Shifts & coverage — synthesized weekly schedule + an hourly
+   demand-vs-capacity view. Backed by /api/analytics/shifts which
+   derives shifts deterministically from the agent list and
+   estimates demand from real ticket history.
+   ───────────────────────────────────────────────────────────── */
+
+// Maps backend "tone" → existing pill class. Keeps the shift legend and
+// schedule cells visually consistent with the rest of the app.
+const SHIFT_PILL_CLASS = {
+  good: "pill pill-good",
+  accent: "pill pill-accent",
+  violet: "pill pill-violet",
+  warn: "pill pill-warn",
+  muted: "pill",
+};
+
+function ShiftsCoverageView() {
+  const [data, setData] = useState(null);
+  const [error, setError] = useState(null);
+
+  const refresh = useCallback(() => {
+    api.shiftsCoverage().then(setData).catch((e) => setError(e.message));
+  }, []);
+
+  useEffect(() => {
+    refresh();
+  }, [refresh]);
+
+  return (
+    <>
+      <Header
+        crumb="Team"
+        title="Shifts & coverage"
+        actions={
+          <>
+            <button className="btn btn-sm">
+              <Icon name="clock" size={12} className="" /> This week
+            </button>
+            <button
+              className="btn btn-sm"
+              onClick={refresh}
+              title="Refresh"
+            >
+              <Icon name="refresh" size={12} className="" /> Refresh
+            </button>
+          </>
+        }
+      />
+      <div className="content">
+        <div className="content-narrow">
+          {error && <div className="error-banner">{error}</div>}
+          {!data && !error && (
+            <>
+              <SkeletonKpiRow cols={4} />
+              <SkeletonCard height={220} />
+              <div style={{ height: 14 }} />
+              <SkeletonCard height={260} />
+            </>
+          )}
+          {data && <ShiftsBody data={data} />}
+        </div>
+      </div>
+    </>
+  );
+}
+
+function ShiftsBody({ data }) {
+  const s = data.summary;
+  return (
+    <>
+      <div
+        style={{
+          display: "grid",
+          gridTemplateColumns: "repeat(4, 1fr)",
+          gap: 14,
+          marginBottom: 18,
+        }}
+      >
+        <Kpi
+          label="On shift now"
+          value={`${s.on_now} / ${s.total_agents}`}
+          delta={`${s.scheduled_today} scheduled`}
+          deltaUp
+        />
+        <Kpi
+          label="Forecasted coverage"
+          value={`${s.coverage_pct}%`}
+          delta={s.coverage_pct >= 95 ? "Healthy" : "Watch"}
+          deltaUp={s.coverage_pct >= 95}
+        />
+        <Kpi
+          label="Coverage gap hours"
+          value={s.gap_hours}
+          delta={s.gap_hours === 0 ? "All clear" : "Action"}
+          deltaUp={s.gap_hours === 0}
+        />
+        <Kpi
+          label="Throughput / agent"
+          value={`${s.tickets_per_agent_hour}/hr`}
+          delta="assumed"
+        />
+      </div>
+
+      <div
+        style={{
+          display: "grid",
+          gridTemplateColumns: "1.6fr 1fr",
+          gap: 14,
+          marginBottom: 18,
+        }}
+      >
+        <CoverageChartCard data={data} />
+        <CoverageGapsCard gaps={data.gaps} />
+      </div>
+
+      <ScheduleGridCard data={data} />
+    </>
+  );
+}
+
+function CoverageChartCard({ data }) {
+  // Overlay capacity bars (soft) with a demand line so the manager can spot
+  // where the forecast pokes above what the team can absorb.
+  const maxVal = Math.max(
+    ...data.demand,
+    ...data.capacity_tickets,
+    1
+  );
+  return (
+    <div className="card">
+      <div className="card-header">
+        <div className="card-title">Today · demand vs capacity</div>
+        <span className="muted small" style={{ marginLeft: "auto" }}>
+          tickets / hour
+        </span>
+      </div>
+      <div className="card-body">
+        <div className="bars" style={{ height: 180 }}>
+          {data.hour_labels.map((label, i) => {
+            const demand = data.demand[i];
+            const cap = data.capacity_tickets[i];
+            const isGap = demand > cap;
+            return (
+              <div className="bar" key={i} title={`${label} · demand ${demand}, capacity ${cap}`}>
+                <div
+                  className="bar-track"
+                  style={{ position: "relative" }}
+                >
+                  {/* Capacity track: full-height ghost showing what the team
+                      can absorb, painted bottom-up. */}
+                  <div
+                    style={{
+                      position: "absolute",
+                      left: 0,
+                      right: 0,
+                      bottom: 0,
+                      height: `${(cap / maxVal) * 100}%`,
+                      background: "var(--bg-sunk)",
+                      border: "1px dashed var(--line)",
+                      borderRadius: "4px 4px 0 0",
+                    }}
+                  />
+                  {/* Demand bar on top — red when it exceeds capacity. */}
+                  <div
+                    className={`bar-fill ${isGap ? "" : "alt"}`}
+                    style={{
+                      height: `${(demand / maxVal) * 100}%`,
+                      position: "relative",
+                      background: isGap
+                        ? "color-mix(in oklab, var(--bad) 70%, transparent)"
+                        : undefined,
+                      borderColor: isGap ? "var(--bad)" : undefined,
+                    }}
+                    data-v={demand}
+                  />
+                </div>
+                <div className="bar-label">{label}</div>
+              </div>
+            );
+          })}
+        </div>
+        <div
+          className="row small muted"
+          style={{ gap: 14, marginTop: 10, flexWrap: "wrap" }}
+        >
+          <LegendSwatch color="var(--accent)" label="Forecast demand" />
+          <LegendSwatch
+            color="color-mix(in oklab, var(--bad) 70%, transparent)"
+            label="Over capacity"
+          />
+          <LegendSwatch
+            color="var(--bg-sunk)"
+            label="Capacity (agents on shift)"
+            outline
+          />
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function LegendSwatch({ color, label, outline }) {
+  return (
+    <span className="row" style={{ gap: 6 }}>
+      <span
+        style={{
+          width: 10,
+          height: 10,
+          borderRadius: 2,
+          background: color,
+          border: outline ? "1px dashed var(--line)" : "none",
+          display: "inline-block",
+        }}
+      />
+      {label}
+    </span>
+  );
+}
+
+function CoverageGapsCard({ gaps }) {
+  return (
+    <div className="card">
+      <div className="card-header">
+        <div className="card-title">Coverage gaps · today</div>
+        <span
+          className={`pill ${gaps.length === 0 ? "pill-good" : "pill-warn"}`}
+          style={{ marginLeft: "auto" }}
+        >
+          <span className="pill-dot" />
+          {gaps.length === 0 ? "All clear" : `${gaps.length} hour${gaps.length === 1 ? "" : "s"}`}
+        </span>
+      </div>
+      <div className="card-body">
+        {gaps.length === 0 ? (
+          <div
+            className="empty-state"
+            style={{ height: 140, padding: 0, textAlign: "center" }}
+          >
+            No projected shortfalls. Schedule looks balanced.
+          </div>
+        ) : (
+          <>
+            {gaps.map((g) => (
+              <div
+                key={g.hour}
+                className="cat-row"
+                style={{ gridTemplateColumns: "60px 1fr auto" }}
+              >
+                <span className="mono">{g.label}</span>
+                <div className="cat-track">
+                  <div
+                    className="cat-fill"
+                    style={{
+                      width: `${Math.min(
+                        100,
+                        (g.demand / Math.max(g.capacity, 1)) * 100 - 100
+                      )}%`,
+                      background: "var(--bad)",
+                    }}
+                    title={`Need ${g.demand}/hr, have ${g.capacity}/hr`}
+                  />
+                </div>
+                <span className="small muted">
+                  +{g.agents_needed} agent{g.agents_needed === 1 ? "" : "s"}
+                </span>
+              </div>
+            ))}
+            <div className="divider" />
+            <div className="row small muted">
+              <span>Demand is forecast from 4-week ticket history.</span>
+            </div>
+          </>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function ScheduleGridCard({ data }) {
+  const shiftEntries = Object.entries(data.shifts).filter(([id]) => id !== "off");
+  return (
+    <div className="card">
+      <div className="card-header">
+        <Icon name="users" size={13} className="" />
+        <div className="card-title">Weekly schedule</div>
+        <div
+          className="row"
+          style={{ gap: 10, marginLeft: "auto", flexWrap: "wrap" }}
+        >
+          {shiftEntries.map(([id, tpl]) => (
+            <span
+              key={id}
+              className={SHIFT_PILL_CLASS[tpl.tone] || "pill"}
+              title={`${tpl.label} · ${formatHour(tpl.start)}–${formatHour(tpl.end)}`}
+            >
+              <span className="pill-dot" /> {tpl.label}
+            </span>
+          ))}
+        </div>
+      </div>
+      <div style={{ overflowX: "auto" }}>
+        <table className="tbl shift-grid">
+          <thead>
+            <tr>
+              <th>Agent</th>
+              {data.days.map((d, i) => (
+                <th
+                  key={d}
+                  style={{
+                    textAlign: "center",
+                    color:
+                      i === data.today_idx ? "var(--accent-ink)" : undefined,
+                  }}
+                >
+                  {d}
+                  {i === data.today_idx && (
+                    <span className="muted small"> · today</span>
+                  )}
+                </th>
+              ))}
+              <th style={{ textAlign: "right" }}>Today</th>
+            </tr>
+          </thead>
+          <tbody>
+            {data.agents.map((a) => (
+              <tr key={a.id}>
+                <td>
+                  <div className="row">
+                    <div
+                      className="avatar"
+                      style={{ width: 26, height: 26, fontSize: 10 }}
+                    >
+                      {a.initials}
+                    </div>
+                    <div style={{ display: "flex", flexDirection: "column" }}>
+                      <span style={{ fontWeight: 500, color: "var(--ink)" }}>
+                        {a.name}
+                      </span>
+                      <span className="small muted">{a.title}</span>
+                    </div>
+                  </div>
+                </td>
+                {a.week.map((shiftId, di) => {
+                  const tpl = data.shifts[shiftId];
+                  const isToday = di === data.today_idx;
+                  if (shiftId === "off") {
+                    return (
+                      <td
+                        key={di}
+                        className="shift-cell shift-cell-off"
+                        style={isToday ? { background: "var(--bg-sunk)" } : undefined}
+                      >
+                        <span className="muted small">—</span>
+                      </td>
+                    );
+                  }
+                  return (
+                    <td
+                      key={di}
+                      className="shift-cell"
+                      style={isToday ? { background: "var(--bg-sunk)" } : undefined}
+                    >
+                      <span
+                        className={SHIFT_PILL_CLASS[tpl.tone] || "pill"}
+                        title={`${tpl.label} · ${formatHour(tpl.start)}–${formatHour(tpl.end)}`}
+                      >
+                        {formatHour(tpl.start)}–{formatHour(tpl.end)}
+                      </span>
+                    </td>
+                  );
+                })}
+                <td style={{ textAlign: "right" }}>
+                  {a.status === "on-shift" ? (
+                    <span className="pill pill-good">
+                      <span className="pill-dot" /> On shift
+                    </span>
+                  ) : a.status === "scheduled" ? (
+                    <span className="pill">
+                      <span className="pill-dot" /> Scheduled
+                    </span>
+                  ) : (
+                    <span className="pill pill-warn">
+                      <span className="pill-dot" /> Off
+                    </span>
+                  )}
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  );
+}
+
+function formatHour(h) {
+  if (h == null) return "—";
+  if (h === 0) return "12a";
+  if (h === 12) return "12p";
+  if (h === 24) return "12a";
+  return h > 12 ? `${h - 12}p` : `${h}a`;
 }
 
 /* ─────────────────────────────────────────────────────────────

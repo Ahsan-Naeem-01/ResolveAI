@@ -245,3 +245,160 @@ def admin_dashboard(db: Session = Depends(get_db)):
 def _format_mm_ss(secs: float) -> str:
     secs = int(secs)
     return f"{secs // 60}m {secs % 60:02d}s"
+
+
+# ── Shifts & coverage ──────────────────────────────────────────────
+# We don't have a Shifts table — schedules are synthesized deterministically
+# from the agent list so the view is stable across reloads. Demand comes from
+# real ticket history (last 4 weeks, same weekday) with a sensible fallback
+# on empty data, mirroring the pattern used by manager_dashboard above.
+
+# Shift templates: hours are [start, end) in 24h. "off" means not scheduled.
+SHIFT_TEMPLATES = {
+    "morning":   {"label": "Morning",   "start": 7,  "end": 15, "tone": "good"},
+    "afternoon": {"label": "Afternoon", "start": 11, "end": 19, "tone": "accent"},
+    "evening":   {"label": "Evening",   "start": 15, "end": 23, "tone": "violet"},
+    "off":       {"label": "Off",       "start": None, "end": None, "tone": "muted"},
+}
+
+# A 7-day pattern. Each agent gets this pattern rotated by their index, so
+# coverage is balanced across the week without anyone working 7 days.
+_SHIFT_PATTERN = ["morning", "afternoon", "evening", "morning", "afternoon", "off", "off"]
+
+# Demo coverage assumption: one agent can handle ~6 tickets per hour.
+TICKETS_PER_AGENT_HOUR = 6
+
+# Window we display on the coverage chart (6a..10p, end-exclusive).
+_DISPLAY_HOURS = list(range(6, 22))
+
+
+@router.get("/shifts", dependencies=[Depends(require_manager)])
+def shifts_coverage(db: Session = Depends(get_db)):
+    now = datetime.now(timezone.utc)
+    today_idx = now.weekday()  # Mon=0..Sun=6
+
+    agents_q = (
+        db.query(User).filter(User.role == "agent").order_by(User.id).all()
+    )
+
+    # Per-agent week of shift ids.
+    agent_rows = []
+    for i, ag in enumerate(agents_q):
+        week = [_SHIFT_PATTERN[(d + i) % len(_SHIFT_PATTERN)] for d in range(7)]
+        today_shift = week[today_idx]
+        tpl = SHIFT_TEMPLATES[today_shift]
+        on_now = (
+            tpl["start"] is not None
+            and tpl["start"] <= now.hour < tpl["end"]
+        )
+        if today_shift == "off":
+            status = "off"
+        elif on_now:
+            status = "on-shift"
+        else:
+            # Scheduled today but not in their window yet (or already finished).
+            status = "scheduled"
+        agent_rows.append({
+            "id": ag.id,
+            "name": ag.name,
+            "initials": ag.initials,
+            "title": ag.title or "Agent",
+            "week": week,
+            "today_shift": today_shift,
+            "status": status,
+            "hours_today": (
+                0 if tpl["start"] is None else tpl["end"] - tpl["start"]
+            ),
+        })
+
+    # Capacity (agents on shift) per displayed hour.
+    capacity_agents = []
+    for h in _DISPLAY_HOURS:
+        on = 0
+        for a in agent_rows:
+            tpl = SHIFT_TEMPLATES[a["today_shift"]]
+            if tpl["start"] is None:
+                continue
+            if tpl["start"] <= h < tpl["end"]:
+                on += 1
+        capacity_agents.append(on)
+    capacity_tickets = [c * TICKETS_PER_AGENT_HOUR for c in capacity_agents]
+
+    # Demand: average tickets/hour from the last 4 same-weekdays.
+    four_weeks = now - timedelta(days=28)
+    recent = (
+        db.query(Ticket).filter(Ticket.created_at >= four_weeks).all()
+    )
+    hist_counts = [0] * len(_DISPLAY_HOURS)
+    weekdays_seen = set()
+    for t in recent:
+        c = _aware(t.created_at)
+        if c is None:
+            continue
+        c = c.astimezone(timezone.utc)
+        if c.weekday() != today_idx:
+            continue
+        weekdays_seen.add(c.date())
+        if c.hour in _DISPLAY_HOURS:
+            hist_counts[_DISPLAY_HOURS.index(c.hour)] += 1
+    n_weeks = max(1, len(weekdays_seen))
+    demand = [round(c / n_weeks) for c in hist_counts]
+    if not any(demand):
+        # Plausible weekday demand curve so the chart is readable on fresh data.
+        demand = [4, 8, 14, 22, 28, 31, 29, 33, 38, 35, 28, 22, 18, 14, 9, 6]
+
+    # Gaps: hours where forecasted demand exceeds capacity.
+    gaps = []
+    for i, h in enumerate(_DISPLAY_HOURS):
+        if demand[i] > capacity_tickets[i]:
+            gaps.append({
+                "hour": h,
+                "label": _hour_label(h),
+                "demand": demand[i],
+                "capacity": capacity_tickets[i],
+                "short_by": demand[i] - capacity_tickets[i],
+                "agents_needed": -(-(demand[i] - capacity_tickets[i]) // TICKETS_PER_AGENT_HOUR),
+            })
+
+    # Roll-up numbers for the KPI strip.
+    on_now_count = sum(1 for a in agent_rows if a["status"] == "on-shift")
+    scheduled_today = sum(1 for a in agent_rows if a["today_shift"] != "off")
+    total_demand = sum(demand) or 1
+    total_served = sum(min(c, d) for c, d in zip(capacity_tickets, demand))
+    coverage_pct = round(100 * total_served / total_demand)
+
+    # Public-facing template list (drop internal "off" sentinel rows here so
+    # the legend on the frontend only shows working shifts).
+    shift_templates_out = {
+        sid: {"label": tpl["label"], "start": tpl["start"], "end": tpl["end"], "tone": tpl["tone"]}
+        for sid, tpl in SHIFT_TEMPLATES.items()
+    }
+
+    return {
+        "summary": {
+            "on_now": on_now_count,
+            "scheduled_today": scheduled_today,
+            "total_agents": len(agent_rows),
+            "coverage_pct": coverage_pct,
+            "gap_hours": len(gaps),
+            "tickets_per_agent_hour": TICKETS_PER_AGENT_HOUR,
+        },
+        "shifts": shift_templates_out,
+        "agents": agent_rows,
+        "days": ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"],
+        "today_idx": today_idx,
+        "hours": _DISPLAY_HOURS,
+        "hour_labels": [_hour_label(h) for h in _DISPLAY_HOURS],
+        "demand": demand,
+        "capacity_agents": capacity_agents,
+        "capacity_tickets": capacity_tickets,
+        "gaps": gaps,
+    }
+
+
+def _hour_label(h: int) -> str:
+    if h == 0:
+        return "12a"
+    if h == 12:
+        return "12p"
+    return f"{h - 12}p" if h > 12 else f"{h}a"
