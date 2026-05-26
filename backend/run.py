@@ -1,4 +1,8 @@
-"""Dev entry point. `python backend/run.py` (or `python -m backend.run`)."""
+"""Dev entry point. Run from the repo root: `python -m backend.run`.
+
+Do NOT `cd backend && python run.py` — the app is loaded by its dotted path
+(`backend.app.main:app`), which requires the repo root on `sys.path`.
+"""
 import uvicorn
 
 
