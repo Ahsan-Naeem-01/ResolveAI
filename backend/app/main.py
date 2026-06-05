@@ -1,5 +1,6 @@
 """ResolveAI FastAPI app — exposes the NLP-backed support API and serves the frontend."""
 from __future__ import annotations
+import os
 from contextlib import asynccontextmanager
 from pathlib import Path
 
@@ -39,11 +40,33 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
+def _allowed_origins() -> list[str]:
+    """Read CORS allow-list from FRONTEND_ORIGIN (comma-separated).
+
+    Examples:
+        FRONTEND_ORIGIN=https://resolveai.vercel.app
+        FRONTEND_ORIGIN=https://resolveai.vercel.app,https://resolveai-git-deployment-you.vercel.app
+
+    Unset → permissive `*` for local dev / single-process mode.
+    """
+    raw = (os.getenv("FRONTEND_ORIGIN") or "").strip()
+    if not raw:
+        return ["*"]
+    return [o.strip().rstrip("/") for o in raw.split(",") if o.strip()]
+
+
+_origins = _allowed_origins()
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # demo — tighten in production
+    allow_origins=_origins,
+    # Vercel gives every preview a unique subdomain like
+    # `resolveai-git-deployment-yourname.vercel.app`. Match the whole
+    # `*.vercel.app` family with a regex so preview deploys work too.
+    allow_origin_regex=r"https://.*\.vercel\.app" if _origins != ["*"] else None,
     allow_methods=["*"],
     allow_headers=["*"],
+    allow_credentials=False,
 )
 
 app.include_router(tickets.router)

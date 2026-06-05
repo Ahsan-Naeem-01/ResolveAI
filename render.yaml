@@ -1,0 +1,56 @@
+# Render Blueprint — deploys the ResolveAI FastAPI backend.
+# Connect this repo in the Render dashboard → "New Blueprint" and it will
+# pick this file up. Frontend is deployed separately on Vercel.
+#
+# Free plan notes:
+#   - Web service sleeps after ~15 min of inactivity; first request wakes it
+#     (10–30 s cold start, then ~10–20 s for classifier training on boot).
+#   - 750 free hrs/month per account.
+#   - No persistent disk on free plan — that's why we require an external
+#     Postgres (Supabase / Neon / Render's free Postgres) via DATABASE_URL.
+
+services:
+  - type: web
+    name: resolveai-backend
+    runtime: python
+    plan: free
+    region: oregon            # change if you want a different region
+    branch: Deployment        # change to `main` after you merge
+    rootDir: .
+
+    buildCommand: pip install --upgrade pip && pip install -r backend/requirements.txt
+    # Single uvicorn worker keeps memory under Render's free-tier 512 MB cap —
+    # scikit-learn + the trained classifier already use ~250 MB resident.
+    startCommand: uvicorn backend.app.main:app --host 0.0.0.0 --port $PORT --workers 1
+
+    healthCheckPath: /api/health
+
+    autoDeploy: true
+
+    envVars:
+      - key: PYTHON_VERSION
+        value: 3.11.9
+
+      # ── Database (REQUIRED) ───────────────────────────────────────
+      # Paste your Supabase / Neon / Render Postgres connection string here
+      # in the Render dashboard. Do NOT commit secrets.
+      - key: DATABASE_URL
+        sync: false
+
+      # ── Supabase Auth (REQUIRED) ──────────────────────────────────
+      - key: SUPABASE_PROJECT_URL
+        sync: false
+      - key: SUPABASE_JWT_SECRET
+        sync: false
+
+      # ── CORS — point at your Vercel deploy ────────────────────────
+      # Comma-separated list of allowed origins. Set this to your Vercel URL
+      # AFTER the first frontend deploy completes.
+      - key: FRONTEND_ORIGIN
+        sync: false
+
+      # ── Optional integrations ─────────────────────────────────────
+      - key: GROQ_API_KEY
+        sync: false
+      - key: GROQ_MODEL
+        value: llama-3.3-70b-versatile

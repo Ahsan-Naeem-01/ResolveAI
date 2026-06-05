@@ -1,9 +1,15 @@
 /* Thin fetch wrapper — Vite dev server proxies /api → http://localhost:8000.
-   Attaches the Supabase bearer token to every request. */
+   Attaches the Supabase bearer token to every request.
+
+   In production (Vercel) the frontend is served from a different origin than
+   the backend, so we point at the deployed Render URL via VITE_API_BASE_URL.
+   Leave it blank locally — the Vite dev proxy handles routing to :8000. */
 
 import { getAccessToken } from "./auth.jsx";
 
-const BASE = "";
+const RAW_BASE = (import.meta.env.VITE_API_BASE_URL || "").trim();
+// Strip any trailing slash so we don't end up with `https://api.example.com//api/health`.
+const BASE = RAW_BASE.endsWith("/") ? RAW_BASE.slice(0, -1) : RAW_BASE;
 
 async function request(path, options = {}) {
   const headers = { "Content-Type": "application/json", ...(options.headers || {}) };
