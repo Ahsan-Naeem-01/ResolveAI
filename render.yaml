@@ -15,7 +15,7 @@ services:
     runtime: python
     plan: free
     region: oregon            # change if you want a different region
-    branch: Deployment        # change to `main` after you merge
+    branch: main        # change to `main` after you merge
     rootDir: .
 
     buildCommand: pip install --upgrade pip && pip install -r backend/requirements.txt
